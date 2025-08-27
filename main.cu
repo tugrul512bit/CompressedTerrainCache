@@ -3,6 +3,7 @@
 #include "device_launch_parameters.h"
 
 #include <stdio.h>
+#include "CompressedTerrainCache.cuh"
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
@@ -14,6 +15,8 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 
 int main()
 {
+    CompressedTerrainCache::TileManager tileManager;
+
     const int arraySize = 5;
     const int a[arraySize] = { 1, 2, 3, 4, 5 };
     const int b[arraySize] = { 10, 20, 30, 40, 50 };
