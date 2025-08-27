@@ -51,10 +51,11 @@ namespace CompressedTerrainCache {
 			std::mutex mutex;
 			std::condition_variable cond;
 			std::thread worker;
+			T* terrainPtr;
 
-			TileWorker() : commandQueue(), working(true), worker([&]() {
+			TileWorker(T* terrainPtrPrm = nullptr) : commandQueue(), working(true), worker([&]() {
 				bool workingTmp = true;
-				std::cout << "thread " << std::endl;
+				std::cout << "thread "<<(uint64_t)terrainPtrPrm << std::endl;
 				while (workingTmp) {
 					{
 						std::unique_lock<std::mutex> lock(mutex);
@@ -64,7 +65,7 @@ namespace CompressedTerrainCache {
 					workingTmp = working;
 				}
 				std::cout << " x " << std::endl;
-			}) { }
+			}), terrainPtr(terrainPtrPrm) { }
 
 			void addCommand(TileCommand<T> cmd) {
 				std::lock_guard<std::mutex> lg(mutex);
@@ -81,6 +82,22 @@ namespace CompressedTerrainCache {
 				worker.join();
 			}
 		};
+
+		struct UnifiedMemory {
+			char* ptr;
+			UnifiedMemory(uint64_t sizeBytes = 0) {
+				if (sizeBytes == 0) {
+					ptr = nullptr;
+				}	else {
+					CUDA_CHECK(cudaMallocManaged(&ptr, sizeBytes, cudaMemAttachGlobal));
+				}
+			}
+			~UnifiedMemory() {
+				if (ptr != nullptr) {
+					CUDA_CHECK(cudaFree(ptr));
+				}
+			}
+		};
 	}
 	/* 
 	Starts dedicated threads for continuous encoding of many tiles with asynchronous reading from gpu.
@@ -90,12 +107,13 @@ namespace CompressedTerrainCache {
 	struct TileManager {
 		int deviceIndex;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
-		TileManager(int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
+		std::shared_ptr<Helper::UnifiedMemory> memory;
+		TileManager(T* terrainPtr, int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>();
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(terrainPtr);
 				workers.push_back(worker);
 			}
 		}
