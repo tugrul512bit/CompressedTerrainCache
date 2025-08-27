@@ -15,7 +15,8 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 
 int main()
 {
-    CompressedTerrainCache::TileManager tileManager;
+    using T = char;
+    CompressedTerrainCache::TileManager<T> tileManager;
 
     const int arraySize = 5;
     const int a[arraySize] = { 1, 2, 3, 4, 5 };
