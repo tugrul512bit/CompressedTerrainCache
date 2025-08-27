@@ -21,18 +21,18 @@
     } while (0)
 namespace CompressedTerrainCache {
 	namespace Helper {
-		// Generates tiles from raw terrain data.
-		struct TileGenerator {
-
-		};
-
-		// Encodes tile with Huffman Encoding.
-		struct TileCompressor {
-
-		};
-		// For defining position and size of a tile.
+		// For defining area of tile by two corners (top-left, bottom-right)
 		struct Rectangle {
-			uint64_t x1, x2, y1, y2;
+			uint64_t x1, y1, x2, y2;
+		};
+		template<typename T>
+		struct Tile {
+			Rectangle area;
+			T* terrainPtr;
+			std::vector<char> encodedData;
+			void encode() {
+				
+			}
 		};
 		// Contains commands to be sent from main CPU thread to worker threads.
 		template<typename T>
@@ -48,54 +48,78 @@ namespace CompressedTerrainCache {
 		struct TileWorker {
 			std::queue<TileCommand<T>> commandQueue;
 			bool working;
+			bool exiting;
 			std::mutex mutex;
 			std::condition_variable cond;
 			std::thread worker;
 			T* terrainPtr;
-
-			TileWorker(T* terrainPtrPrm = nullptr) : commandQueue(), working(true), worker([&]() {
+			int id;
+			TileWorker(int index, T* terrainPtrPrm = nullptr) : commandQueue(), working(true), worker([&, index, terrainPtrPrm]() {
 				bool workingTmp = true;
-				std::cout << "thread "<<(uint64_t)terrainPtrPrm << std::endl;
-				while (workingTmp) {
-					{
-						std::unique_lock<std::mutex> lock(mutex);
-						cond.wait(lock);
-					}
-					std::lock_guard<std::mutex> lg(mutex);
-					workingTmp = working;
+				{
+					std::unique_lock<std::mutex> lock(mutex);
+					exiting = false;
 				}
-				std::cout << " x " << std::endl;
-			}), terrainPtr(terrainPtrPrm) { }
+				if (terrainPtrPrm != nullptr) {
+					std::cout << "?(" << id << ")" << std::endl;
+					while (workingTmp) {
+						{
+							std::unique_lock<std::mutex> lock(mutex);
+							cond.wait(lock);
+						}
+						std::unique_lock<std::mutex> lock(mutex);
+						workingTmp = working;
+					}
+
+					std::unique_lock<std::mutex> lock(mutex);
+					exiting = true;
+				}
+			}), terrainPtr(terrainPtrPrm), id(index) { }
 
 			void addCommand(TileCommand<T> cmd) {
-				std::lock_guard<std::mutex> lg(mutex);
-				commandQueue.push(cmd);
+				{
+					std::unique_lock<std::mutex> lock(mutex);
+					commandQueue.push(cmd);
+				}
 				cond.notify_one();
 			}
 
 			~TileWorker() {
-				{
-					std::lock_guard<std::mutex> lg(mutex);
-					working = false;
-					cond.notify_one();
+				if (terrainPtr != nullptr) {
+					std::cout << "!("<<id<<")" << std::endl;
+					bool exitingTmp = false;
+					while(!exitingTmp)
+					{
+						{
+							std::unique_lock<std::mutex> lock(mutex);
+							exitingTmp = exiting;
+						}
+						if(!exitingTmp)
+						{
+							std::unique_lock<std::mutex> lock(mutex);
+							working = false;
+						}
+						cond.notify_one();
+						std::this_thread::yield();
+					}
+					worker.join();
 				}
-				worker.join();
 			}
 		};
 
 		struct UnifiedMemory {
-			char* ptr;
+			std::shared_ptr<char> ptr;
 			UnifiedMemory(uint64_t sizeBytes = 0) {
 				if (sizeBytes == 0) {
 					ptr = nullptr;
 				}	else {
-					CUDA_CHECK(cudaMallocManaged(&ptr, sizeBytes, cudaMemAttachGlobal));
+					char* tmp;
+					CUDA_CHECK(cudaMallocManaged(&tmp, sizeBytes, cudaMemAttachGlobal));
+					ptr = std::shared_ptr<char>(tmp, [](char* ptr) { CUDA_CHECK(cudaFree(ptr)); });
 				}
 			}
 			~UnifiedMemory() {
-				if (ptr != nullptr) {
-					CUDA_CHECK(cudaFree(ptr));
-				}
+
 			}
 		};
 	}
@@ -106,15 +130,23 @@ namespace CompressedTerrainCache {
 	template<typename T>
 	struct TileManager {
 		int deviceIndex;
-		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
 		std::shared_ptr<Helper::UnifiedMemory> memory;
-		TileManager(T* terrainPtr, int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
+		std::shared_ptr<Helper::Tile<T>> tiles;
+		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
+		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(terrainPtr);
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(i, terrainPtr);
 				workers.push_back(worker);
+			}
+			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
+			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
+			uint64_t numTiles = numTilesX * numTilesY;
+			memory = std::make_shared<Helper::UnifiedMemory>(numTiles * tileWidth * tileHeight * sizeof(T));
+			for (uint64_t y = 0; y < numTilesY; y++) {
+
 			}
 		}
 

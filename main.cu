@@ -15,11 +15,18 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 
 int main()
 {
-    size_t numTerrainElements = 1000000;
-    using T = char;
-    std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr;});
-    CompressedTerrainCache::TileManager<T> tileManager(terrain.get());
-
+    {
+        size_t terrainWidth = 1000;
+        size_t terrainHeight = 1000;
+        size_t tileWidth = 32;
+        size_t tileHeight = 32;
+        size_t numTerrainElements = terrainWidth * terrainHeight;
+        using T = char;
+        std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
+        // Creating tile manager that uses terrain as input.
+        CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight);
+    }
+    return 0;
     const int arraySize = 5;
     const int a[arraySize] = { 1, 2, 3, 4, 5 };
     const int b[arraySize] = { 10, 20, 30, 40, 50 };
