@@ -5,11 +5,13 @@
 #include <memory>
 #include <queue>
 #include <mutex>
+#include <chrono>
 #include <condition_variable>
 #include <iostream>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
+#include <device_launch_parameters.h>
 #define CUDA_CHECK(call)                                                   \
     do {                                                                   \
         cudaError_t err = call;                                            \

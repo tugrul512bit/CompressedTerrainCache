@@ -1,8 +1,5 @@
-﻿
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
-#include <stdio.h>
+﻿#include <stdio.h>
+#include <random>
 #include "CompressedTerrainCache.cuh"
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
@@ -23,6 +20,13 @@ int main()
         size_t numTerrainElements = terrainWidth * terrainHeight;
         using T = char;
         std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
+        std::mt19937 gen(42);
+        std::uniform_int_distribution<int> dist(-128, 127);
+        for (size_t i = 0; i < numTerrainElements; i++) {
+            terrain.get()[i] = dist(gen);
+        }
+
+
         // Creating tile manager that uses terrain as input.
         CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight);
     }
