@@ -183,7 +183,7 @@ namespace CompressedTerrainCache {
 		std::shared_ptr<std::mutex> tilesLock;
 		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
-		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = 1 + 0 * std::thread::hardware_concurrency(), int deviceId = 0) {
+		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
