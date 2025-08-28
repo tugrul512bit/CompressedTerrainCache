@@ -12,9 +12,11 @@ namespace HuffmanTileEncoder {
 		Rectangle area;
 		std::vector<unsigned char> sourceData;
 		std::vector<unsigned char> encodedData;
+		int index;
 		void copyInput(uint64_t terrainWidth, uint64_t terrainHeight, T* terrainPtr) {
 			int size = (area.x2 - area.x1) * (area.y2 - area.y1);
 			sourceData.resize(sizeof(T) * size);
+			encodedData.resize(sizeof(T) * size);
 			uint64_t xMax = (terrainWidth < area.x2 ? terrainWidth : area.x2);
 			uint64_t yMax = (terrainHeight < area.y2 ? terrainHeight : area.y2);
 			int localIndex = 0;
