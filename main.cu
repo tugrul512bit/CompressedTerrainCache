@@ -21,7 +21,7 @@ int main()
         using T = unsigned char;
         // Generating sample terrain.
         std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
-        std::mt19937 gen(42);
+        std::mt19937 gen(rand());
         std::uniform_int_distribution<int> dist(0, 4);
         for (size_t i = 0; i < numTerrainElements; i++) {
             terrain.get()[i] = dist(gen);
