@@ -13,20 +13,23 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 int main()
 {
     {
-        size_t terrainWidth = 100;
-        size_t terrainHeight = 100;
-        size_t tileWidth = 32;
-        size_t tileHeight = 32;
+        size_t terrainWidth = 10000;
+        size_t terrainHeight = 10000;
+        size_t tileWidth = 90;
+        size_t tileHeight = 90;
         size_t numTerrainElements = terrainWidth * terrainHeight;
         using T = unsigned char;
         // Generating sample terrain.
         std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
         std::mt19937 gen(rand());
-        std::uniform_int_distribution<int> dist(0, 4);
+        std::uniform_int_distribution<int> dist(0, 40);
         for (size_t i = 0; i < numTerrainElements; i++) {
             terrain.get()[i] = dist(gen);
         }
-
+        unsigned char table[7] = { 'n', 'v', 'i', 'd', 'i', 'a', ' ' };
+        for (size_t i = 0; i < numTerrainElements; i++) {
+            terrain.get()[i] = table[i % 7];
+        }
 
         // Creating tile manager that uses terrain as input.
         CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight);
