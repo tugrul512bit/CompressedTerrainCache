@@ -8,6 +8,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include "HuffmanTileEncoder.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -23,19 +24,6 @@
     } while (0)
 namespace CompressedTerrainCache {
 	namespace Helper {
-		// For defining area of tile by two corners (top-left, bottom-right)
-		struct Rectangle {
-			uint64_t x1, y1, x2, y2;
-		};
-		template<typename T>
-		struct Tile {
-			Rectangle area;
-			T* terrainPtr;
-			std::vector<char> encodedData;
-			void encode() {
-				
-			}
-		};
 		// Contains commands to be sent from main CPU thread to worker threads.
 		template<typename T>
 		struct TileCommand {
@@ -45,7 +33,7 @@ namespace CompressedTerrainCache {
 				CMD_ENCODE_HUFFMAN,
 			};
 			CMD command;
-			Rectangle tileSource;
+			HuffmanTileEncoder::Rectangle tileSource;
 		};
 		template<typename T>
 		struct TileWorker {
@@ -57,36 +45,49 @@ namespace CompressedTerrainCache {
 			std::thread worker;
 			T* terrainPtr;
 			int id;
-			TileWorker(int index, T* terrainPtrPrm = nullptr) : commandQueue(), working(true), worker([&, index, terrainPtrPrm]() {
+			TileWorker(int index, T* terrainPtrPrm = nullptr, std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tilesPtr = nullptr, std::shared_ptr<std::mutex> tilesLockPtr = nullptr) : commandQueue(), working(true), worker([&, index, terrainPtrPrm, tilesPtr, tilesLockPtr]() {
 				bool workingTmp = true;
+				std::queue<TileCommand<T>> localCommandQueue;
+				std::vector<HuffmanTileEncoder::Tile<T>> localTiles;
 				{
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = false;
 				}
-				if (terrainPtrPrm != nullptr) {
+				if (terrainPtrPrm != nullptr && tilesPtr != nullptr && tilesLockPtr != nullptr) {
 
 					while (workingTmp) {
 						{
 							std::unique_lock<std::mutex> lock(mutex);
 							cond.wait(lock);
 						}
-						std::queue<TileCommand<T>> localQueue;
+
 						{
 							std::unique_lock<std::mutex> lock(mutex);
 							workingTmp = working;	
-							localQueue.swap(commandQueue);
+							localCommandQueue.swap(commandQueue);
 						}
-						while (localQueue.size() > 0) {
-							auto task = localQueue.front();
-							localQueue.pop();
+						while (localCommandQueue.size() > 0) {
+							auto task = localCommandQueue.front();
+							localCommandQueue.pop();
 							if (task.command == TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN) {
-								std::cout << "task..." << std::endl;
+								HuffmanTileEncoder::Tile<T> currentTile;
+								localTiles.push_back(currentTile);
 							}
 						}
+						if(localTiles.size() > 0)
+						{
+							{
+								std::unique_lock<std::mutex> lock(*tilesLockPtr);
+								if (tilesPtr != nullptr) {
+									tilesPtr->insert(tilesPtr->end(), localTiles.begin(), localTiles.end());
+								}
+							}
+							localTiles.clear();
+						}
 					}
-					std::cout << commandQueue.size() << std::endl;
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = true;
+					std::cout << "r=" << localCommandQueue.size() << std::endl;
 				}
 			}), terrainPtr(terrainPtrPrm), id(index) { }
 
@@ -145,14 +146,17 @@ namespace CompressedTerrainCache {
 	struct TileManager {
 		int deviceIndex;
 		std::shared_ptr<Helper::UnifiedMemory> memory;
-		std::shared_ptr<Helper::Tile<T>> tiles;
+		std::shared_ptr<std::mutex> tilesLock;
+		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
 		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
+			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
+			tilesLock = std::make_shared<std::mutex>();
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(i, terrainPtr);
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(i, terrainPtr, tiles, tilesLock);
 				workers.push_back(worker);
 			}
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
@@ -163,7 +167,7 @@ namespace CompressedTerrainCache {
 			int idx = 0;
 			int numWorkers = workers.size();
 			for (uint64_t y = 0; y < numTilesY; y++) {
-				for (uint64_t x = 0; x < numTilesY; x++) {
+				for (uint64_t x = 0; x < numTilesX; x++) {
 					int index = idx++ % numWorkers;
 					Helper::TileCommand<T> cmd;
 					cmd.command = Helper::TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN;
@@ -174,10 +178,13 @@ namespace CompressedTerrainCache {
 					workers[index]->addCommand(cmd);
 				}
 			}
+			std::cout << "m=" << idx << std::endl;
 		}
 
 		~TileManager() {
-
+			workers.clear();
+			std::unique_lock<std::mutex> lock(*tilesLock);
+			std::cout << "n=" << tiles->size() << std::endl;
 		}
 	};
 }

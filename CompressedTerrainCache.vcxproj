@@ -97,6 +97,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CompressedTerrainCache.cuh" />
+    <ClInclude Include="HuffmanTileEncoder.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="LICENSE.txt" />
