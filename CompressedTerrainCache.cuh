@@ -56,9 +56,11 @@ namespace CompressedTerrainCache {
 		template<typename T>
 		struct TileWorker {
 			cudaStream_t stream;
+			cudaEvent_t event;
 			std::queue<TileCommand<T>> commandQueue;
 			bool working;
 			bool exiting;
+			bool busy;
 			std::mutex mutex;
 			std::condition_variable cond;
 			std::thread worker;
@@ -68,11 +70,13 @@ namespace CompressedTerrainCache {
 				bool workingTmp = true;
 				CUDA_CHECK(cudaSetDevice(deviceIndex));
 				CUDA_CHECK(cudaStreamCreate(&stream));
+				CUDA_CHECK(cudaEventCreate(&event));
 				std::queue<TileCommand<T>> localCommandQueue;
 				std::vector<HuffmanTileEncoder::Tile<T>> localTiles;
 				{
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = false;
+					busy = false;
 				}
 				if (terrainPtrPrm != nullptr && tilesLockPtr != nullptr) {
 
@@ -94,6 +98,7 @@ namespace CompressedTerrainCache {
 								currentTile.index = task.index;
 								currentTile.area = task.tileSource;
 								currentTile.copyInput(terrainWidth, terrainHeight, terrainPtrPrm);
+								currentTile.encode();
 								localTiles.push_back(currentTile);
 							}
 						}
@@ -101,10 +106,13 @@ namespace CompressedTerrainCache {
 						{
 							{
 								std::unique_lock<std::mutex> lock(*tilesLockPtr);
+								std::unique_lock<std::mutex> lock2(mutex);
 								for (HuffmanTileEncoder::Tile<T> & tile : localTiles) {
 									uint64_t size = (tile.area.x2 - tile.area.x1) * (tile.area.y2 - tile.area.y1);
 									CUDA_CHECK(cudaMemcpyAsync((void*)(tilesPtr.ptr.get()+(tile.index * size * sizeof(T))), (void*)(tile.encodedData.data()), sizeof(T)* size, cudaMemcpyHostToHost, stream));
 								}
+								cudaEventRecord(event, stream);
+								busy = false;
 							}
 							localTiles.clear();
 						}
@@ -119,10 +127,24 @@ namespace CompressedTerrainCache {
 				{
 					std::unique_lock<std::mutex> lock(mutex);
 					commandQueue.push(cmd);
+					busy = true;
 				}
 				cond.notify_one();
 			}
-
+			void wait(cudaStream_t streamMain) {
+				bool busyTmp = true;
+				while (busyTmp) {
+					{
+						std::unique_lock<std::mutex> lock(mutex);
+						busyTmp = busy;
+					}
+					cond.notify_one();
+				}
+				{
+					std::unique_lock<std::mutex> lock(mutex);
+					cudaStreamWaitEvent(streamMain, event);
+				}
+			}
 			~TileWorker() {
 				if (terrainPtr != nullptr) {
 
@@ -143,6 +165,8 @@ namespace CompressedTerrainCache {
 					}
 					worker.join();
 				}
+				CUDA_CHECK(cudaStreamSynchronize(stream));
+				CUDA_CHECK(cudaEventDestroy(event));
 				CUDA_CHECK(cudaStreamDestroy(stream));
 			}
 		};
@@ -154,14 +178,16 @@ namespace CompressedTerrainCache {
 	template<typename T>
 	struct TileManager {
 		int deviceIndex;
+		cudaStream_t stream;
 		Helper::UnifiedMemory memory;
 		std::shared_ptr<std::mutex> tilesLock;
 		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
-		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
+		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = 1 + 0 * std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
+			CUDA_CHECK(cudaStreamCreate(&stream));
 			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
 			tilesLock = std::make_shared<std::mutex>();
 
@@ -175,10 +201,9 @@ namespace CompressedTerrainCache {
 			}
 			std::cout << "Encoding tiles..." << std::endl;
 			int idx = 0;
-			int numWorkers = workers.size();
 			for (uint64_t y = 0; y < numTilesY; y++) {
 				for (uint64_t x = 0; x < numTilesX; x++) {
-					int index = idx % numWorkers;
+					int index = idx % numThreads;
 					Helper::TileCommand<T> cmd;
 					cmd.command = Helper::TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN;
 					cmd.index = idx;
@@ -190,13 +215,16 @@ namespace CompressedTerrainCache {
 					idx++;
 				}
 			}
-
+			for (int i = 0; i < numThreads; i++) {
+				workers[i]->wait(stream);
+			}
+			CUDA_CHECK(cudaStreamSynchronize(stream));
 		}
 
 		~TileManager() {
 			workers.clear();
 			std::unique_lock<std::mutex> lock(*tilesLock);
-
+			CUDA_CHECK(cudaStreamDestroy(stream));
 		}
 	};
 }

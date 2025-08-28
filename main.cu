@@ -13,13 +13,18 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 int main()
 {
     {
-        size_t terrainWidth = 1000;
-        size_t terrainHeight = 1000;
+        size_t terrainWidth = 100;
+        size_t terrainHeight = 100;
         size_t tileWidth = 32;
         size_t tileHeight = 32;
         size_t numTerrainElements = terrainWidth * terrainHeight;
-        using T = char;
+        using T = unsigned char;
+        // Generating sample terrain.
         std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
+        for (uint64_t i = 0; i < numTerrainElements; i++) {
+            terrain.get()[i] = T();
+        }
+
         std::mt19937 gen(42);
         std::uniform_int_distribution<int> dist(-128, 127);
         for (size_t i = 0; i < numTerrainElements; i++) {

@@ -17,13 +17,18 @@ namespace HuffmanTileEncoder {
 			int size = (area.x2 - area.x1) * (area.y2 - area.y1);
 			sourceData.resize(sizeof(T) * size);
 			encodedData.resize(sizeof(T) * size);
-			uint64_t xMax = (terrainWidth < area.x2 ? terrainWidth : area.x2);
-			uint64_t yMax = (terrainHeight < area.y2 ? terrainHeight : area.y2);
 			int localIndex = 0;
-			for (uint64_t y = area.y1; y < yMax; y++) {
-				for (uint64_t x = area.x1; x < xMax; x++) {
+			T defaultVal = T();
+			for (uint64_t y = area.y1; y < area.y2; y++) {
+				for (uint64_t x = area.x1; x < area.x2; x++) {
 					uint64_t index = y * terrainWidth + x;
-					sourceData[localIndex++] = terrainPtr[index];
+					if (x < terrainWidth && y < terrainHeight) {
+						reinterpret_cast<T*>(sourceData.data())[localIndex] = terrainPtr[index];
+					}
+					else {
+						reinterpret_cast<T*>(sourceData.data())[localIndex] = defaultVal;
+					}
+					localIndex++;
 				}
 			}
 		}
@@ -35,16 +40,29 @@ namespace HuffmanTileEncoder {
 			for (unsigned char& c : sourceData) {
 				histogram[c]++;
 			}
-			std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<uint32_t>> minHeap;
+			struct Node {
+				uint32_t count;
+				unsigned char value;
+				bool operator() (Node& n1, Node& n2) {
+					return n1.count < n2.count;
+				}
+			};
+			std::priority_queue<Node, std::vector<Node>, Node> minHeap;
 			for (int i = 0; i < 256; i++) {
 				if (histogram[i] > 0) {
-					minHeap.push(histogram[i]);
+					Node node;
+					node.count = histogram[i];
+					node.value = i;
+					minHeap.push(node);
 				}
 			}
+			std::cout << "##:: ";
 			while (!minHeap.empty()) {
-				std::cout << minHeap.top() << std::endl;
+				std::cout<<" { "<< (int)minHeap.top().value<<" " << minHeap.top().count << "} ";
 				minHeap.pop();
 			}
+			encodedData = sourceData;
+			std::cout << std::endl;
 		}
 	};
 	template<typename T>
