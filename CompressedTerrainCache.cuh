@@ -40,6 +40,7 @@ namespace CompressedTerrainCache {
 		template<typename T>
 		struct TileCommand {
 			enum CMD {
+				CMD_NOOP,
 				CMD_COPY_FROM_RAW_SOURCE_DATA,
 				CMD_ENCODE_HUFFMAN,
 			};
@@ -63,16 +64,27 @@ namespace CompressedTerrainCache {
 					exiting = false;
 				}
 				if (terrainPtrPrm != nullptr) {
-					std::cout << "?(" << id << ")" << std::endl;
+
 					while (workingTmp) {
 						{
 							std::unique_lock<std::mutex> lock(mutex);
 							cond.wait(lock);
 						}
-						std::unique_lock<std::mutex> lock(mutex);
-						workingTmp = working;
+						std::queue<TileCommand<T>> localQueue;
+						{
+							std::unique_lock<std::mutex> lock(mutex);
+							workingTmp = working;	
+							localQueue.swap(commandQueue);
+						}
+						while (localQueue.size() > 0) {
+							auto task = localQueue.front();
+							localQueue.pop();
+							if (task.command == TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN) {
+								std::cout << "task..." << std::endl;
+							}
+						}
 					}
-
+					std::cout << commandQueue.size() << std::endl;
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = true;
 				}
@@ -88,7 +100,7 @@ namespace CompressedTerrainCache {
 
 			~TileWorker() {
 				if (terrainPtr != nullptr) {
-					std::cout << "!("<<id<<")" << std::endl;
+
 					bool exitingTmp = false;
 					while(!exitingTmp)
 					{
@@ -147,8 +159,20 @@ namespace CompressedTerrainCache {
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
 			uint64_t numTiles = numTilesX * numTilesY;
 			memory = std::make_shared<Helper::UnifiedMemory>(numTiles * tileWidth * tileHeight * sizeof(T));
+			std::cout << "Encoding tiles..." << std::endl;
+			int idx = 0;
+			int numWorkers = workers.size();
 			for (uint64_t y = 0; y < numTilesY; y++) {
-
+				for (uint64_t x = 0; x < numTilesY; x++) {
+					int index = idx++ % numWorkers;
+					Helper::TileCommand<T> cmd;
+					cmd.command = Helper::TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN;
+					cmd.tileSource.x1 = x * tileWidth;
+					cmd.tileSource.y1 = y * tileHeight;
+					cmd.tileSource.x2 = x * tileWidth + tileWidth;
+					cmd.tileSource.y2 = y * tileHeight + tileHeight;
+					workers[index]->addCommand(cmd);
+				}
 			}
 		}
 
