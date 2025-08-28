@@ -190,11 +190,16 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaStreamCreate(&stream));
 			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
 			tilesLock = std::make_shared<std::mutex>();
-
+			int initialSize = sizeof(T) * (tileWidth * tileHeight);
+			int parallelChunkSize = sizeof(uint32_t) * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+			while (initialSize % parallelChunkSize != 0) {
+				initialSize++;
+			}
+			std::cout << "x = " << initialSize << std::endl;
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
 			uint64_t numTiles = numTilesX * numTilesY;
-			memory = Helper::UnifiedMemory(numTiles * tileWidth * tileHeight * sizeof(T));
+			memory = Helper::UnifiedMemory(numTiles * initialSize);
 			for (int i = 0; i < numThreads; i++) {
 				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memory, tilesLock);
 				workers.push_back(worker);

@@ -153,7 +153,7 @@ namespace HuffmanTileEncoder {
 			unsigned char codeLengthMapping[256];
 			heap[0]->map(codeMapping, codeLengthMapping);
 			encodedTree = heap[0]->linearize();
-			std::cout << "encoded tree nodes = " << encodedTree.size() << std::endl;
+
 			// Encoding in striped pattern. Each row contains same index bits but in chunks of 32 for efficiency.
 			// Finding longest column (num32BitSteps) and computing striped pattern.
 			int numBytes = sizeof(T) * (area.x2 - area.x1) * (area.y2 - area.y1);
@@ -204,7 +204,6 @@ namespace HuffmanTileEncoder {
 					}
 				}
 			}
-			std::cout<< "input bytes = " << sourceData.size() << "   max bits per thread = " << maxBits << std::endl;
 		}
 	};
 }
