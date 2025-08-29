@@ -66,7 +66,11 @@ namespace CompressedTerrainCache {
 			std::thread worker;
 			T* terrainPtr;
 			int id;
-			TileWorker(int deviceIndex, int index, T* terrainPtrPrm, uint64_t terrainWidth, uint64_t terrainHeight, UnifiedMemory tilesPtr, std::shared_ptr<std::mutex> tilesLockPtr = nullptr) : commandQueue(), working(true), worker([&, index, terrainPtrPrm, tilesPtr, tilesLockPtr, terrainWidth, terrainHeight, deviceIndex]() {
+			TileWorker(int deviceIndex, int index, T* terrainPtrPrm, uint64_t terrainWidth, uint64_t terrainHeight, 
+				UnifiedMemory encodedTiles, 
+				UnifiedMemory encodedTrees,
+				std::shared_ptr<std::mutex> tilesLockPtr = nullptr) 
+				: commandQueue(), working(true), worker([&, index, terrainPtrPrm, encodedTiles, encodedTrees, tilesLockPtr, terrainWidth, terrainHeight, deviceIndex]() {
 				bool workingTmp = true;
 				CUDA_CHECK(cudaSetDevice(deviceIndex));
 				CUDA_CHECK(cudaStreamCreate(&stream));
@@ -109,7 +113,7 @@ namespace CompressedTerrainCache {
 								std::unique_lock<std::mutex> lock2(mutex);
 								for (HuffmanTileEncoder::Tile<T> & tile : localTiles) {
 									uint64_t size = (tile.area.x2 - tile.area.x1) * (tile.area.y2 - tile.area.y1);
-									CUDA_CHECK(cudaMemcpyAsync((void*)(tilesPtr.ptr.get()+(tile.index * size * sizeof(T))), (void*)(tile.encodedData.data()), sizeof(T)* size, cudaMemcpyHostToHost, stream));
+									CUDA_CHECK(cudaMemcpyAsync((void*)(encodedTiles.ptr.get()+(tile.index * size * sizeof(T))), (void*)(tile.encodedData.data()), sizeof(T)* size, cudaMemcpyHostToHost, stream));
 								}
 								cudaEventRecord(event, stream);
 								busy = false;
@@ -205,7 +209,7 @@ namespace CompressedTerrainCache {
 			// Assuming maximum 511 nodes including internal nodes, 1 reserved for node count metadata.
 			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint16_t) * 512);
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, tilesLock);
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees, tilesLock);
 				workers.push_back(worker);
 			}
 			std::cout << "Encoding tiles..." << std::endl;

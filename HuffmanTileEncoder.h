@@ -7,6 +7,16 @@
 namespace HuffmanTileEncoder {
     // This is used for shape of encoded data.
 	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 256;
+	template<typename T>
+	int computeBlockAlignedSize(int tileWidth, int tileHeight) {
+		int size = tileWidth * tileHeight;
+		int alignedSize = sizeof(T) * size;
+		int parallelChunkSize = sizeof(uint32_t) * NUM_CUDA_THREADS_PER_BLOCK;
+		while (alignedSize % parallelChunkSize != 0) {
+			alignedSize++;
+		}
+		return alignedSize;
+	}
 	// For defining area of tile by two corners (top-left, bottom-right)
 	struct Rectangle {
 		uint64_t x1, y1, x2, y2;
@@ -19,14 +29,11 @@ namespace HuffmanTileEncoder {
 		std::vector<uint16_t> encodedTree;
 		int index;
 		void copyInput(uint64_t terrainWidth, uint64_t terrainHeight, T* terrainPtr) {
-			int size = (area.x2 - area.x1) * (area.y2 - area.y1);
-			sourceData.resize(sizeof(T) * size);
-			int initialSize = sizeof(T) * size;
-			int parallelChunkSize = sizeof(uint32_t) * NUM_CUDA_THREADS_PER_BLOCK;
-			while (initialSize % parallelChunkSize != 0) {
-				initialSize++;
-			}
-			encodedData.resize(initialSize, 0);
+			int tileWidth = area.x2 - area.x1;
+			int tileHeight = area.y2 - area.y1;
+			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
+			sourceData.resize(sizeof(T) * tileWidth * tileHeight);
+			encodedData.resize(alignedSize, 0);
 			int localIndex = 0;
 			T defaultVal = T();
 			for (uint64_t y = area.y1; y < area.y2; y++) {
@@ -43,13 +50,19 @@ namespace HuffmanTileEncoder {
 			}
 		}
 		void encode() {
+			int tileWidth = area.x2 - area.x1;
+			int tileHeight = area.y2 - area.y1;
+			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
 			int histogram[256];
 			for (int i = 0; i < 256; i++) {
 				histogram[i] = 0;
 			}
+			int processedItems = 0;
 			for (unsigned char& c : sourceData) {
 				histogram[c]++;
+				processedItems++;
 			}
+			histogram[0] += (alignedSize - processedItems);
 			struct Node {
 				uint32_t count;
 				unsigned char value;
@@ -153,7 +166,6 @@ namespace HuffmanTileEncoder {
 			unsigned char codeLengthMapping[256];
 			heap[0]->map(codeMapping, codeLengthMapping);
 			encodedTree = heap[0]->linearize();
-
 			// Encoding in striped pattern. Each row contains same index bits but in chunks of 32 for efficiency.
 			// Finding longest column (num32BitSteps) and computing striped pattern.
 			int numBytes = sizeof(T) * (area.x2 - area.x1) * (area.y2 - area.y1);
@@ -171,6 +183,11 @@ namespace HuffmanTileEncoder {
 					if (index < numBytes) {
 						unsigned char code = codeMapping[sourceData[index]];
 						unsigned char codeLength = codeLengthMapping[sourceData[index]];
+						totalCodeBitsForThread[thread] += codeLength;
+					}
+					else if (index < alignedSize) {
+						unsigned char code = codeMapping[0];
+						unsigned char codeLength = codeLengthMapping[0];
 						totalCodeBitsForThread[thread] += codeLength;
 					}
 				}
@@ -201,9 +218,32 @@ namespace HuffmanTileEncoder {
 							reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK] = data;
 							currentCodeBitsForThread[thread]++;
 						}
+					}	else if (index < alignedSize) {
+						unsigned char code = codeMapping[0];
+						unsigned char codeLength = codeLengthMapping[0];
+						for (int bit = 0; bit < codeLength; bit++) {
+							// Inside an integer.
+							int bitPos = currentCodeBitsForThread[thread] % 32;
+							// Inside a column of integers.
+							int row = currentCodeBitsForThread[thread] / 32;
+							int col = NUM_CUDA_THREADS_PER_BLOCK;
+
+							uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK];
+							data = data | (((code >> bitPos) & one) << bitPos);
+							reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK] = data;
+							currentCodeBitsForThread[thread]++;
+						}
 					}
 				}
 			}
+
+
+			uint64_t outputOffset = sizeof(T) * index * alignedSize;
+			if (alignedSize < (NUM_CUDA_THREADS_PER_BLOCK * num32BitSteps * sizeof(uint32_t))) {
+				std::cout << "ERROR: block-aligned size is less than current size." << std::endl;
+				exit(1);
+			}
+			// 
 		}
 	};
 }
