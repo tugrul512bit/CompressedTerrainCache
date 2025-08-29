@@ -106,6 +106,7 @@ namespace CompressedTerrainCache {
 								currentTile.area = task.tileSource;
 								currentTile.copyInput(terrainWidth, terrainHeight, terrainPtrPrm);
 								currentTile.encode();
+								currentTile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
 								localTiles.push_back(currentTile);
 							}
 						}
@@ -215,15 +216,15 @@ namespace CompressedTerrainCache {
 			int idx = 0;
 			for (uint64_t y = 0; y < numTilesY; y++) {
 				for (uint64_t x = 0; x < numTilesX; x++) {
-					int index = idx % numThreads;
+					int workerIndex = idx % numThreads;
 					Helper::TileCommand<T> cmd;
 					cmd.command = Helper::TileCommand<T>::CMD::CMD_ENCODE_HUFFMAN;
 					cmd.index = idx;
 					cmd.tileSource.x1 = x * tileWidth;
 					cmd.tileSource.y1 = y * tileHeight;
-					cmd.tileSource.x2 = x * tileWidth + tileWidth;
-					cmd.tileSource.y2 = y * tileHeight + tileHeight;
-					workers[index]->addCommand(cmd);
+					cmd.tileSource.x2 = cmd.tileSource.x1 + tileWidth;
+					cmd.tileSource.y2 = cmd.tileSource.y1 + tileHeight;
+					workers[workerIndex]->addCommand(cmd);
 					idx++;
 				}
 			}
