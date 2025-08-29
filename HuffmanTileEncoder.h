@@ -246,15 +246,20 @@ namespace HuffmanTileEncoder {
 		void copyOutput(unsigned char* encodedTilesPtr, unsigned char* encodedTreesPtr) {
 			int tileWidth = area.x2 - area.x1;
 			int tileHeight = area.y2 - area.y1;
-			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
-			std::cout << "index=" << index << std::endl;
-			uint64_t outputTileOffset = sizeof(T) * index * alignedSize;
-			uint64_t outputTreeOffset = sizeof(uint16_t) * index * 512;
+			uint64_t alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
+			uint64_t outputTileOffset = index * alignedSize;
+			uint64_t outputTreeOffset = index * (uint64_t)512;
 			int treeElements = encodedTree.size();
-			encodedTreesPtr[outputTreeOffset++] = treeElements;
+			uint16_t* treePtr = reinterpret_cast<uint16_t*>(encodedTreesPtr);
+			treePtr[outputTreeOffset++] = treeElements;
 			for (int m = 0; m < treeElements; m++) {
-				//encodedTreesPtr[outputTreeOffset++] = encodedTree[m];
+				treePtr[outputTreeOffset++] = encodedTree[m];
 			}
+			if (encodedData.size() != alignedSize) {
+				std::cout << "??" << std::endl;
+				exit(1);
+			}
+			std::copy(encodedData.begin(), encodedData.end(), encodedTilesPtr + outputTileOffset);
 		}
 	};
 }

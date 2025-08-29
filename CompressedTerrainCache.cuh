@@ -58,8 +58,6 @@ namespace CompressedTerrainCache {
 		};
 		template<typename T>
 		struct TileWorker {
-			cudaStream_t stream;
-			cudaEvent_t event;
 			std::queue<TileCommand<T>> commandQueue;
 			bool working;
 			bool exiting;
@@ -69,21 +67,18 @@ namespace CompressedTerrainCache {
 			std::thread worker;
 			T* terrainPtr;
 			int id;
+			std::vector<HuffmanTileEncoder::Tile<T>> localTiles;
+			std::queue<TileCommand<T>> localCommandQueue;
 			TileWorker(int deviceIndex, int index, T* terrainPtrPrm, uint64_t terrainWidth, uint64_t terrainHeight, 
 				UnifiedMemory encodedTiles, 
 				UnifiedMemory encodedTrees,
 				std::shared_ptr<std::mutex> tilesLockPtr = nullptr) 
 				: commandQueue(), working(true), worker([&, index, terrainPtrPrm, encodedTiles, encodedTrees, tilesLockPtr, terrainWidth, terrainHeight, deviceIndex]() {
 				bool workingTmp = true;
-				CUDA_CHECK(cudaSetDevice(deviceIndex));
-				CUDA_CHECK(cudaStreamCreate(&stream));
-				CUDA_CHECK(cudaEventCreate(&event));
-				std::queue<TileCommand<T>> localCommandQueue;
-				std::vector<HuffmanTileEncoder::Tile<T>> localTiles;
 				{
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = false;
-					busy = false;
+					busy = true;
 				}
 				if (terrainPtrPrm != nullptr && tilesLockPtr != nullptr) {
 
@@ -106,21 +101,19 @@ namespace CompressedTerrainCache {
 								currentTile.area = task.tileSource;
 								currentTile.copyInput(terrainWidth, terrainHeight, terrainPtrPrm);
 								currentTile.encode();
-								currentTile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
 								localTiles.push_back(currentTile);
 							}
 						}
 						if(localTiles.size() > 0)
 						{
 							{
-								std::unique_lock<std::mutex> lock(*tilesLockPtr);
-								std::unique_lock<std::mutex> lock2(mutex);
+								std::unique_lock<std::mutex> lock(mutex);
 								for (HuffmanTileEncoder::Tile<T> & tile : localTiles) {
-									uint64_t size = (tile.area.x2 - tile.area.x1) * (tile.area.y2 - tile.area.y1);
-									CUDA_CHECK(cudaMemcpyAsync((void*)(encodedTiles.ptr.get()+(tile.index * size * sizeof(T))), (void*)(tile.encodedData.data()), sizeof(T)* size, cudaMemcpyHostToHost, stream));
+									tile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
 								}
-								cudaEventRecord(event, stream);
-								busy = false;
+								if (commandQueue.empty()) {
+									busy = false;
+								}
 							}
 							localTiles.clear();
 						}
@@ -139,7 +132,7 @@ namespace CompressedTerrainCache {
 				}
 				cond.notify_one();
 			}
-			void wait(cudaStream_t streamMain) {
+			void wait() {
 				bool busyTmp = true;
 				while (busyTmp) {
 					{
@@ -147,10 +140,6 @@ namespace CompressedTerrainCache {
 						busyTmp = busy;
 					}
 					cond.notify_one();
-				}
-				{
-					std::unique_lock<std::mutex> lock(mutex);
-					cudaStreamWaitEvent(streamMain, event);
 				}
 			}
 			~TileWorker() {
@@ -173,9 +162,6 @@ namespace CompressedTerrainCache {
 					}
 					worker.join();
 				}
-				CUDA_CHECK(cudaStreamSynchronize(stream));
-				CUDA_CHECK(cudaEventDestroy(event));
-				CUDA_CHECK(cudaStreamDestroy(stream));
 			}
 		};
 	}
@@ -229,8 +215,10 @@ namespace CompressedTerrainCache {
 				}
 			}
 			for (int i = 0; i < numThreads; i++) {
-				workers[i]->wait(stream);
+				workers[i]->wait();
 			}
+			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedSize, cudaMemAttachGlobal));
+			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint16_t) * 512, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 
 			// Test
