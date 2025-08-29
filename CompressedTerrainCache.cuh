@@ -85,11 +85,13 @@ namespace CompressedTerrainCache {
 					while (workingTmp) {
 						{
 							std::unique_lock<std::mutex> lock(mutex);
-							cond.wait(lock);
+							if (!busy) {
+								cond.wait(lock);
+							}
 						}
 						{
 							std::unique_lock<std::mutex> lock(mutex);
-							workingTmp = working;	
+							workingTmp = working;
 							localCommandQueue.swap(commandQueue);
 						}
 						while (localCommandQueue.size() > 0) {
@@ -106,11 +108,11 @@ namespace CompressedTerrainCache {
 						}
 						if(localTiles.size() > 0)
 						{
+							for (HuffmanTileEncoder::Tile<T>& tile : localTiles) {
+								tile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
+							}
 							{
 								std::unique_lock<std::mutex> lock(mutex);
-								for (HuffmanTileEncoder::Tile<T> & tile : localTiles) {
-									tile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
-								}
 								if (commandQueue.empty()) {
 									busy = false;
 								}
@@ -120,7 +122,6 @@ namespace CompressedTerrainCache {
 					}
 					std::unique_lock<std::mutex> lock(mutex);
 					exiting = true;
-
 				}
 			}), terrainPtr(terrainPtrPrm), id(index) { }
 
@@ -140,6 +141,7 @@ namespace CompressedTerrainCache {
 						busyTmp = busy;
 					}
 					cond.notify_one();
+					std::this_thread::yield();
 				}
 			}
 			~TileWorker() {
@@ -194,6 +196,7 @@ namespace CompressedTerrainCache {
 			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * blockAlignedSize);
 			// Assuming maximum 511 nodes including internal nodes, 1 reserved for node count metadata.
 			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint16_t) * 512);
+			std::cout << "Creating cpu workers..." << std::endl;
 			for (int i = 0; i < numThreads; i++) {
 				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees, tilesLock);
 				workers.push_back(worker);
@@ -214,9 +217,11 @@ namespace CompressedTerrainCache {
 					idx++;
 				}
 			}
+
 			for (int i = 0; i < numThreads; i++) {
 				workers[i]->wait();
 			}
+			std::cout << std::endl;
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedSize, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint16_t) * 512, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamSynchronize(stream));

@@ -255,10 +255,6 @@ namespace HuffmanTileEncoder {
 			for (int m = 0; m < treeElements; m++) {
 				treePtr[outputTreeOffset++] = encodedTree[m];
 			}
-			if (encodedData.size() != alignedSize) {
-				std::cout << "??" << std::endl;
-				exit(1);
-			}
 			std::copy(encodedData.begin(), encodedData.end(), encodedTilesPtr + outputTileOffset);
 		}
 	};
