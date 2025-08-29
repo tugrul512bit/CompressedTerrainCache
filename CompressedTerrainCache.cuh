@@ -179,11 +179,12 @@ namespace CompressedTerrainCache {
 	struct TileManager {
 		int deviceIndex;
 		cudaStream_t stream;
-		Helper::UnifiedMemory memory;
+		Helper::UnifiedMemory memoryForEncodedTiles;
+		Helper::UnifiedMemory memoryForEncodedTrees;
 		std::shared_ptr<std::mutex> tilesLock;
 		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
-		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = 1 + 0* std::thread::hardware_concurrency(), int deviceId = 0) {
+		TileManager(T* terrainPtr, uint64_t width, uint64_t height, uint64_t tileWidth, uint64_t tileHeight,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			deviceIndex = deviceId;
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
@@ -199,9 +200,12 @@ namespace CompressedTerrainCache {
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
 			uint64_t numTiles = numTilesX * numTilesY;
-			memory = Helper::UnifiedMemory(numTiles * initialSize);
+			// Assuming encoded bits are not greater than raw data.
+			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * initialSize);
+			// Assuming maximum 511 nodes including internal nodes, 1 reserved for node count metadata.
+			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint16_t) * 512);
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memory, tilesLock);
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, tilesLock);
 				workers.push_back(worker);
 			}
 			std::cout << "Encoding tiles..." << std::endl;
