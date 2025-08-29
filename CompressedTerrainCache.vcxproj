@@ -93,6 +93,7 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <CudaCompile Include="CompressedTerrainCache.cu" />
     <CudaCompile Include="main.cu" />
   </ItemGroup>
   <ItemGroup>

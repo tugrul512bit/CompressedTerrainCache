@@ -57,12 +57,13 @@ namespace HuffmanTileEncoder {
 			for (int i = 0; i < 256; i++) {
 				histogram[i] = 0;
 			}
-			int processedItems = 0;
 			for (unsigned char& c : sourceData) {
 				histogram[c]++;
-				processedItems++;
 			}
-			histogram[0] += (alignedSize - processedItems);
+			int virtualPadding = alignedSize - sourceData.size();
+			if (virtualPadding > 0) {
+				histogram[0] += virtualPadding;
+			}
 			struct Node {
 				uint32_t count;
 				unsigned char value;
