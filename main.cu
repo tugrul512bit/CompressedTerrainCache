@@ -28,7 +28,7 @@ int main()
 
         // Creating tile manager that uses terrain as input.
         int deviceIndex = 0;
-        int numCpuThreads = 20;
+        int numCpuThreads = 1;
         CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
     }
     return 0;

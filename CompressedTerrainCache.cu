@@ -19,17 +19,19 @@ namespace CompressedTerrainCache {
 				uint32_t* tilePtr = reinterpret_cast<uint32_t*>(encodedTiles);
 				int numNodes = treePtr[0];
 				printf("num nodes = %i \n", numNodes);
-				constexpr int n = 256;
+				constexpr int n = HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 				int currentNodeIndex[n];
-				for (int i = 0; i < n; i++) currentNodeIndex[i] = 0;
+				int x[n];
+				for (int i = 0; i < n; i++) { currentNodeIndex[i] = 0; x[i] = 0; }
 
-				for (int i = 0; i < numBitsTotal; i++) {
-					for (int thr = 0; thr < n; thr++) {
-						int chunkIndex = thr + (i / 32) * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
-						uint32_t data = tilePtr[chunkIndex];
+				for (int thr = 0; thr < n; thr++) {
+					for (int bit = 0; bit < numBitsTotal; bit++) {
 
-						int bitIndex = i % 32;
-						unsigned char codeBit = (data >> bitIndex) & 1;
+						int chunkIndex = thr + (bit / 32) * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+						uint32_t chunk = tilePtr[chunkIndex];
+
+						uint32_t chunkBit = bit % 32;
+						uint32_t codeBit = (chunk >> chunkBit) & 1;
 						uint32_t node = treePtr[1 + currentNodeIndex[thr]];
 						uint8_t symbol = node & 0b11111111;
 						uint8_t leafNode = node >> 8;
@@ -46,8 +48,11 @@ namespace CompressedTerrainCache {
 
 						if (leafNode) {
 							printf("%c", symbol);
+							//printf("%i", x[thr]);
 							currentNodeIndex[thr] = 0;
+							break;
 						}
+						x[thr]++;
 					}
 				}
 			}

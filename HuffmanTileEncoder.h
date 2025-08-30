@@ -33,7 +33,7 @@ namespace HuffmanTileEncoder {
 			int tileHeight = area.y2 - area.y1;
 			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
 			sourceData.resize(sizeof(T) * tileWidth * tileHeight);
-			encodedData.resize(alignedSize, 0);
+			encodedData.assign(alignedSize, 0);
 			int localIndex = 0;
 			T defaultVal = T();
 			for (uint64_t y = area.y1; y < area.y2; y++) {
@@ -208,13 +208,13 @@ namespace HuffmanTileEncoder {
 					// Inside a column of integers.
 					uint32_t row = currentCodeBitsForThread[thread] / 32;
 					uint32_t col = thread;
-					int index = col + row * NUM_CUDA_THREADS_PER_BLOCK;
-					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[index];
-					data = data | (((code >> bit) & one) << bitPos);
-					reinterpret_cast<uint32_t*>(encodedData.data())[index] = data;
+					int idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
+					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
+					uint32_t bitData = (code >> bit) & 1;
+					data = data | ((bitData & one) << bitPos);
+					reinterpret_cast<uint32_t*>(encodedData.data())[idx] = data;
 					currentCodeBitsForThread[thread]++;
 				}
-				
 			}
 		}
 
