@@ -263,7 +263,7 @@ namespace CompressedTerrainCache {
 			uint32_t tw = tileWidth;
 			uint32_t th = tileHeight;
 			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th };
-			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeTile, dim3(1, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeTile, dim3(256, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 		}
 		~TileManager() {

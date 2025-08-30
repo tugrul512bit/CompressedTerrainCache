@@ -59,18 +59,16 @@ namespace CompressedTerrainCache {
 							}
 							decodeBitIndex++;
 						}
-						
-						if (tile == 0 && byteIndex  < 257) {
+						decodeBitIndex--;
+
+						if (byteIndex  < tileSizeBytes) {
 							const uint32_t tileLocalX = byteIndex % tileWidth;
 							const uint32_t tileLocalY = byteIndex / tileWidth;
 							const uint32_t tileGlobalX = tile % numTilesX;
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
 							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
-
-							//printf("%u = %c %c \n",byteIndex, symbol, originalTileDataForComparison[globalX + globalY * terrainWidth]);
 							if (symbol != originalTileDataForComparison[globalX + globalY * terrainWidth]) {
-								printf("(%u %u)", globalX, globalY);
 								error++;
 							}
 						}

@@ -33,7 +33,8 @@ namespace HuffmanTileEncoder {
 			int tileHeight = area.y2 - area.y1;
 			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
 			sourceData.resize(sizeof(T) * tileWidth * tileHeight);
-			encodedData.assign(alignedSize, 0);
+			encodedData.resize(alignedSize);
+			std::fill(encodedData.begin(), encodedData.end(), 0);
 			int localIndex = 0;
 			T defaultVal = T();
 			for (uint64_t y = area.y1; y < area.y2; y++) {
@@ -204,6 +205,7 @@ namespace HuffmanTileEncoder {
 					code = codeMapping[0];
 					codeLength = codeLengthMapping[0];
 				}
+
 				for (int bit = 0; bit < codeLength; bit++) {
 					// Inside an integer.
 					uint32_t bitPos = currentCodeBitsForThread[thread] % 32;
