@@ -212,8 +212,8 @@ namespace HuffmanTileEncoder {
 					uint32_t col = thread;
 					uint32_t idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
 					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
-					uint32_t bitData = (code >> bit) & 1;
-					data = data | ((bitData & one) << bitPos);
+					uint32_t bitData = (code >> bit) & one;
+					data = data | (bitData << bitPos);
 					reinterpret_cast<uint32_t*>(encodedData.data())[idx] = data;
 					currentCodeBitsForThread[thread]++;
 				}

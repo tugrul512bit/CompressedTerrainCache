@@ -26,16 +26,16 @@ namespace CompressedTerrainCache {
 	namespace Kernels {
 		// Each block decodes a tile concurrently with each block thread decoding its own column in a striped-pattern.
 		__global__ void k_decodeTile(
-			unsigned char* encodedTiles,
-			unsigned char* encodedTrees,
-			uint32_t blockAlignedElements,
-			uint32_t tileSizeBytes,
-			unsigned char* originalTileDataForComparison,
-			uint32_t numTilesToTest,
-			uint32_t terrainWidth,
-			uint32_t terrainHeight,
-			uint32_t tileWidth,
-			uint32_t tileHeight);
+			const unsigned char* encodedTiles,
+			const unsigned char* encodedTrees,
+			const uint32_t blockAlignedElements,
+			const uint32_t tileSizeBytes,
+			const unsigned char* originalTileDataForComparison,
+			const uint32_t numTilesToTest,
+			const uint32_t terrainWidth,
+			const uint32_t terrainHeight,
+			const uint32_t tileWidth,
+			const uint32_t tileHeight);
 	}
 	namespace Helper {
 		struct UnifiedMemory {
