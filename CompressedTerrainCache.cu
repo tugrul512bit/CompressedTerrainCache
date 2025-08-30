@@ -38,7 +38,7 @@ namespace CompressedTerrainCache {
 
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
-						bool leafNodeFound = false;
+						unsigned char leafNodeFound = 0;
 						uint32_t currentNodeIndex = 0;
 						uint8_t symbol = 0; 
 						while (!leafNodeFound) {
@@ -48,19 +48,17 @@ namespace CompressedTerrainCache {
 							uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
 							uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
 							uint32_t node = treeBlockPtr[1 + currentNodeIndex];
-							uint8_t leafNode = node >> 8;
+							leafNodeFound = (node >> 8) & 0b11111111;
 							uint16_t childNodeStart = node >> 16;
-							if (!leafNode) {
+							symbol = node & 0b11111111;
+							if (!leafNodeFound) {
 								if (bitBeingDecoded) {
 									currentNodeIndex = childNodeStart + 1;
 								}	else {
 									currentNodeIndex = childNodeStart;
 								}
-							}	else {
-								symbol = node & 0b11111111;
 							}
 							decodeBitIndex++;
-							leafNodeFound = leafNode;
 						}
 						
 						if (tile == 0 && byteIndex  < 1024) {

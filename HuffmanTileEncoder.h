@@ -210,7 +210,7 @@ namespace HuffmanTileEncoder {
 					// Inside a column of integers.
 					uint32_t row = currentCodeBitsForThread[thread] / 32;
 					uint32_t col = thread;
-					int idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
+					uint32_t idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
 					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
 					uint32_t bitData = (code >> bit) & 1;
 					data = data | ((bitData & one) << bitPos);
