@@ -71,7 +71,9 @@ namespace HuffmanTileEncoder {
 				std::shared_ptr<Node> left;
 				std::shared_ptr<Node> right;
 				std::vector<unsigned char> sequence;
-				unsigned char code;
+				// Supports 32-depth tree maximum.
+				uint32_t code;
+				// Maximum 32 code length.
 				unsigned char codeLength;
 				int linearizedIndex;
 				Node(int ct = 0, unsigned char val = 0, unsigned char leafNode = 0):count(ct), value(val), leaf(leafNode){
@@ -93,22 +95,22 @@ namespace HuffmanTileEncoder {
 						right->build(rightSequence);
 					}
 					if (leaf) {
-						int sz = currentSequence.size();
-						if (sz > 8) {
-							std::cout << "ERROR: code sequence longer than 8 bits." << std::endl;
+						uint32_t sz = currentSequence.size();
+						if (sz > 32) {
+							std::cout << "ERROR: code sequence longer than 32 bits." << std::endl;
 							exit(1);
 						}
 						else {
-							unsigned char one = 1;
-							for(unsigned char i = 0; i < sz; i++) {
-								unsigned char val = currentSequence[i];
+							uint32_t one = 1;
+							for(uint32_t i = 0; i < sz; i++) {
+								uint32_t val = currentSequence[i];
 								code = code | (val << i);
 							}
 							codeLength = sz;
 						}
 					}
 				}
-				void map(unsigned char * mapPtr, unsigned char * mapLengthPtr) {
+				void map(uint32_t* mapPtr, unsigned char * mapLengthPtr) {
 					if (leaf) {
 						mapPtr[value] = code;
 						mapLengthPtr[value] = codeLength;
@@ -177,7 +179,7 @@ namespace HuffmanTileEncoder {
 				heap.push_back(parent);
 			}
 			heap[0]->build();
-			unsigned char codeMapping[256];
+			uint32_t codeMapping[256];
 			unsigned char codeLengthMapping[256];
 			heap[0]->map(codeMapping, codeLengthMapping);
 			encodedTree = heap[0]->linearize();

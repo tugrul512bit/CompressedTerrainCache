@@ -90,6 +90,8 @@
       <Optimization>O3</Optimization>
       <RuntimeChecks>Default</RuntimeChecks>
       <AdditionalOptions>-O3 %(AdditionalOptions)</AdditionalOptions>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <GenerateLineInfo>false</GenerateLineInfo>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
