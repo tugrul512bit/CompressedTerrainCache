@@ -30,6 +30,11 @@ int main()
     int deviceIndex = 0;
     int numCpuThreads = 1;
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
+    // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();
+    // Benchmarking normal direct access for all tiles.
+    tileManager.benchmarkNormalAccess();
+    // Benchmarking decoded access for all tiles.
+    tileManager.benchmarkDecodedAccess();
     return 0;
 }
