@@ -21,7 +21,7 @@ namespace CompressedTerrainCache {
 				printf("num nodes = %i \n", numNodes);
 				constexpr int n = 256;
 				int currentNodeIndex[n];
-				for (int i = 0; i < n; i++) currentNodeIndex[i] = 1;
+				for (int i = 0; i < n; i++) currentNodeIndex[i] = 0;
 
 				for (int i = 0; i < numBitsTotal; i++) {
 					for (int thr = 0; thr < n; thr++) {
@@ -30,23 +30,23 @@ namespace CompressedTerrainCache {
 
 						int bitIndex = i % 32;
 						unsigned char codeBit = (data >> bitIndex) & 1;
-						uint32_t node = treePtr[currentNodeIndex[thr]];
+						uint32_t node = treePtr[1 + currentNodeIndex[thr]];
 						uint8_t symbol = node & 0b11111111;
 						uint8_t leafNode = node >> 8;
 						uint16_t childNodeStart = node >> 16;
 
 						if (!leafNode) {
 							if (codeBit) {
-								currentNodeIndex[thr] = childNodeStart + 2;
+								currentNodeIndex[thr] = childNodeStart + 1;
 							}
 							else {
-								currentNodeIndex[thr] = childNodeStart + 1;
+								currentNodeIndex[thr] = childNodeStart;
 							}
 						}
 
 						if (leafNode) {
 							printf("%c", symbol);
-							currentNodeIndex[thr] = 1;
+							currentNodeIndex[thr] = 0;
 						}
 					}
 				}

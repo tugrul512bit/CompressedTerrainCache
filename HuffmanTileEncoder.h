@@ -73,24 +73,24 @@ namespace HuffmanTileEncoder {
 				std::vector<unsigned char> sequence;
 				unsigned char code;
 				unsigned char codeLength;
-				int linearizedParentIndex;
+				int linearizedIndex;
 				Node(int ct = 0, unsigned char val = 0, unsigned char leafNode = 0):count(ct), value(val), leaf(leafNode){
 					left = nullptr;
 					right = nullptr;
 					code = 0;
 					codeLength = 0;
-					linearizedParentIndex = -1;
+					linearizedIndex = -1;
 				}
-				void build(int depth = 0, std::vector<unsigned char> currentSequence = std::vector<unsigned char>()) {
+				void build(std::vector<unsigned char> currentSequence = std::vector<unsigned char>()) {
 					if (left != nullptr) {
 						std::vector<unsigned char> leftSequence = currentSequence;
 						leftSequence.push_back(0);
-						left->build(depth + 1, leftSequence);
+						left->build(leftSequence);
 					}
 					if (right != nullptr) {
 						std::vector<unsigned char> rightSequence = currentSequence;
 						rightSequence.push_back(1);
-						right->build(depth + 1, rightSequence);
+						right->build(rightSequence);
 					}
 					if (leaf) {
 						int sz = currentSequence.size();
@@ -122,31 +122,35 @@ namespace HuffmanTileEncoder {
 						}
 					}
 				}
-				// Each 16bit data is made of two 8bit regions, 1st 8bit is value, 2nd 8bit is leaf-node indicator (1 is leaf, 0 is interior node)
+				void computeLinearizedChildNodeIndices(std::vector<uint32_t>& output) {
+					if (left != nullptr) {
+						if (linearizedIndex >= 0) {
+							output[linearizedIndex] = output[linearizedIndex] | (left->linearizedIndex << 16);
+						}
+						left->computeLinearizedChildNodeIndices(output);
+					}
+					if (right != nullptr) {
+						right->computeLinearizedChildNodeIndices(output);
+					}
+				}
 				std::vector<uint32_t> linearize() {
 					std::vector<uint32_t> output;
 					// BFS linearization.
 					std::queue<Node*> outputNodes;
 					outputNodes.push(this);
-					int idx = 0;
 					while (outputNodes.size() > 0) {
 						Node* current = outputNodes.front();
 						outputNodes.pop();
 						output.push_back(current->value | (current->leaf << 8));
-						if (current->linearizedParentIndex >= 0) {
-							
-							output[current->linearizedParentIndex] = output[current->linearizedParentIndex] | ((output.size() - 1) << 16);
-						}
+						current->linearizedIndex = output.size() - 1;
 						if (current->left != nullptr) { 
 							outputNodes.push(current->left.get()); 
-							current->left->linearizedParentIndex = output.size() - 1;
 						}
 						if (current->right != nullptr) { 
 							outputNodes.push(current->right.get()); 
-							current->right->linearizedParentIndex = -1;
 						}
-						
 					}
+					computeLinearizedChildNodeIndices(output);
 					return output;
 				}
 			};
