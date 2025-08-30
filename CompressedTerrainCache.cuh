@@ -188,14 +188,14 @@ namespace CompressedTerrainCache {
 			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
 			tilesLock = std::make_shared<std::mutex>();
 			int blockAlignedSize = HuffmanTileEncoder::computeBlockAlignedSize<T>(tileWidth, tileHeight);
-			std::cout << "x = " << blockAlignedSize << std::endl;
+			std::cout << "block-aligned size = " << blockAlignedSize << std::endl;
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
 			uint64_t numTiles = numTilesX * numTilesY;
 			// Assuming encoded bits are not greater than raw data.
 			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * blockAlignedSize);
 			// Assuming maximum 511 nodes including internal nodes, 1 reserved for node count metadata.
-			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint16_t) * 512);
+			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint32_t) * 512);
 			std::cout << "Creating cpu workers..." << std::endl;
 			for (int i = 0; i < numThreads; i++) {
 				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees, tilesLock);
@@ -223,7 +223,7 @@ namespace CompressedTerrainCache {
 			}
 			std::cout << std::endl;
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedSize, cudaMemAttachGlobal));
-			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint16_t) * 512, cudaMemAttachGlobal));
+			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 
 			// Test

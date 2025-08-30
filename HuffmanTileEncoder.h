@@ -26,7 +26,7 @@ namespace HuffmanTileEncoder {
 		Rectangle area;
 		std::vector<unsigned char> sourceData;
 		std::vector<unsigned char> encodedData;
-		std::vector<uint16_t> encodedTree;
+		std::vector<uint32_t> encodedTree;
 		int index;
 		void copyInput(uint64_t terrainWidth, uint64_t terrainHeight, T* terrainPtr) {
 			int tileWidth = area.x2 - area.x1;
@@ -38,9 +38,9 @@ namespace HuffmanTileEncoder {
 			T defaultVal = T();
 			for (uint64_t y = area.y1; y < area.y2; y++) {
 				for (uint64_t x = area.x1; x < area.x2; x++) {
-					uint64_t index = y * terrainWidth + x;
+					uint64_t idx = y * terrainWidth + x;
 					if (x < terrainWidth && y < terrainHeight) {
-						reinterpret_cast<T*>(sourceData.data())[localIndex] = terrainPtr[index];
+						reinterpret_cast<T*>(sourceData.data())[localIndex] = terrainPtr[idx];
 					}
 					else {
 						reinterpret_cast<T*>(sourceData.data())[localIndex] = defaultVal;
@@ -73,11 +73,13 @@ namespace HuffmanTileEncoder {
 				std::vector<unsigned char> sequence;
 				unsigned char code;
 				unsigned char codeLength;
-				Node(int ct = 0, unsigned char val = 0, unsigned char leafNode = false):count(ct), value(val), leaf(leafNode){
+				int linearizedParentIndex;
+				Node(int ct = 0, unsigned char val = 0, unsigned char leafNode = 0):count(ct), value(val), leaf(leafNode){
 					left = nullptr;
 					right = nullptr;
 					code = 0;
 					codeLength = 0;
+					linearizedParentIndex = -1;
 				}
 				void build(int depth = 0, std::vector<unsigned char> currentSequence = std::vector<unsigned char>()) {
 					if (left != nullptr) {
@@ -121,21 +123,29 @@ namespace HuffmanTileEncoder {
 					}
 				}
 				// Each 16bit data is made of two 8bit regions, 1st 8bit is value, 2nd 8bit is leaf-node indicator (1 is leaf, 0 is interior node)
-				std::vector<uint16_t> linearize() {
-					std::vector<uint16_t> output;
+				std::vector<uint32_t> linearize() {
+					std::vector<uint32_t> output;
 					// BFS linearization.
 					std::queue<Node*> outputNodes;
 					outputNodes.push(this);
+					int idx = 0;
 					while (outputNodes.size() > 0) {
 						Node* current = outputNodes.front();
 						outputNodes.pop();
 						output.push_back(current->value | (current->leaf << 8));
+						if (current->linearizedParentIndex >= 0) {
+							
+							output[current->linearizedParentIndex] = output[current->linearizedParentIndex] | ((output.size() - 1) << 16);
+						}
 						if (current->left != nullptr) { 
 							outputNodes.push(current->left.get()); 
+							current->left->linearizedParentIndex = output.size() - 1;
 						}
 						if (current->right != nullptr) { 
 							outputNodes.push(current->right.get()); 
+							current->right->linearizedParentIndex = -1;
 						}
+						
 					}
 					return output;
 				}
@@ -170,76 +180,37 @@ namespace HuffmanTileEncoder {
 			// Encoding in striped pattern. Each row contains same index bits but in chunks of 32 for efficiency.
 			// Finding longest column (num32BitSteps) and computing striped pattern.
 			int numBytes = sizeof(T) * (area.x2 - area.x1) * (area.y2 - area.y1);
-			int numByteSteps = (numBytes + NUM_CUDA_THREADS_PER_BLOCK - 1) / NUM_CUDA_THREADS_PER_BLOCK;
-			int currentBit = 0;
-			int totalCodeBitsForThread[NUM_CUDA_THREADS_PER_BLOCK];
 			int currentCodeBitsForThread[NUM_CUDA_THREADS_PER_BLOCK];
 			for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
-				totalCodeBitsForThread[thread] = 0;
 				currentCodeBitsForThread[thread] = 0;
 			}
-			for (int i = 0; i < numByteSteps; i++) {
-				for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
-					int index = i * NUM_CUDA_THREADS_PER_BLOCK + thread;
-					if (index < numBytes) {
-						unsigned char code = codeMapping[sourceData[index]];
-						unsigned char codeLength = codeLengthMapping[sourceData[index]];
-						totalCodeBitsForThread[thread] += codeLength;
-					}
-					else if (index < alignedSize) {
-						unsigned char code = codeMapping[0];
-						unsigned char codeLength = codeLengthMapping[0];
-						totalCodeBitsForThread[thread] += codeLength;
-					}
-				}
-			}
-			int maxBits = 0;
-			for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
-				if (maxBits < totalCodeBitsForThread[thread]) {
-					maxBits = totalCodeBitsForThread[thread];
-				}
-			}
-			int num32BitSteps = (maxBits + 32 - 1) / 32;
-			unsigned char one = 1;
-			for (int i = 0; i < numByteSteps; i++) {
-				for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
-					int index = i * NUM_CUDA_THREADS_PER_BLOCK + thread;
-					if (index < numBytes) {
-						unsigned char code = codeMapping[sourceData[index]];
-						unsigned char codeLength = codeLengthMapping[sourceData[index]];
-						for (int bit = 0; bit < codeLength; bit++) {
-							// Inside an integer.
-							int bitPos = currentCodeBitsForThread[thread] % 32;
-							// Inside a column of integers.
-							int row = currentCodeBitsForThread[thread] / 32;
-							int col = NUM_CUDA_THREADS_PER_BLOCK;
-							
-							uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK];
-							data = data | (((code >> bitPos) & one) << bitPos);
-							reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK] = data;
-							currentCodeBitsForThread[thread]++;
-						}
-					}	else if (index < alignedSize) {
-						unsigned char code = codeMapping[0];
-						unsigned char codeLength = codeLengthMapping[0];
-						for (int bit = 0; bit < codeLength; bit++) {
-							// Inside an integer.
-							int bitPos = currentCodeBitsForThread[thread] % 32;
-							// Inside a column of integers.
-							int row = currentCodeBitsForThread[thread] / 32;
-							int col = NUM_CUDA_THREADS_PER_BLOCK;
+			
+			uint32_t one = 1;
+			for (int i = 0; i < alignedSize; i++) {
+				int thread = i % NUM_CUDA_THREADS_PER_BLOCK;
 
-							uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK];
-							data = data | (((code >> bitPos) & one) << bitPos);
-							reinterpret_cast<uint32_t*>(encodedData.data())[col + row * NUM_CUDA_THREADS_PER_BLOCK] = data;
-							currentCodeBitsForThread[thread]++;
-						}
-					}
+				uint32_t code;
+				uint32_t codeLength;
+				if (i < numBytes) {
+					code = codeMapping[sourceData[i]];
+					codeLength = codeLengthMapping[sourceData[i]];
+				}	else {
+					code = codeMapping[0];
+					codeLength = codeLengthMapping[0];
 				}
-			}
-			if (alignedSize < (NUM_CUDA_THREADS_PER_BLOCK * num32BitSteps * sizeof(uint32_t))) {
-				std::cout << "ERROR: block-aligned size is less than current size." << std::endl;
-				exit(1);
+				for (int bit = 0; bit < codeLength; bit++) {
+					// Inside an integer.
+					uint32_t bitPos = currentCodeBitsForThread[thread] % 32;
+					// Inside a column of integers.
+					uint32_t row = currentCodeBitsForThread[thread] / 32;
+					uint32_t col = thread;
+					int index = col + row * NUM_CUDA_THREADS_PER_BLOCK;
+					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[index];
+					data = data | (((code >> bit) & one) << bitPos);
+					reinterpret_cast<uint32_t*>(encodedData.data())[index] = data;
+					currentCodeBitsForThread[thread]++;
+				}
+				
 			}
 		}
 
@@ -250,11 +221,12 @@ namespace HuffmanTileEncoder {
 			uint64_t outputTileOffset = index * alignedSize;
 			uint64_t outputTreeOffset = index * (uint64_t)512;
 			int treeElements = encodedTree.size();
-			uint16_t* treePtr = reinterpret_cast<uint16_t*>(encodedTreesPtr);
+			uint32_t* treePtr = reinterpret_cast<uint32_t*>(encodedTreesPtr);
 			treePtr[outputTreeOffset++] = treeElements;
 			for (int m = 0; m < treeElements; m++) {
 				treePtr[outputTreeOffset++] = encodedTree[m];
 			}
+
 			std::copy(encodedData.begin(), encodedData.end(), encodedTilesPtr + outputTileOffset);
 		}
 	};
