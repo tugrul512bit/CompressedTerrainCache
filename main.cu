@@ -65,6 +65,7 @@ int main()
             }
         }
     }
-    tileManager.benchmarkForSelectedTiles(tileIndexList);
+    tileManager.benchmarkForSelectedTilesNormalAccess(tileIndexList);
+    tileManager.benchmarkForSelectedTilesEncodedAccess(tileIndexList);
     return 0;
 }

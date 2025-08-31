@@ -56,8 +56,8 @@ namespace CompressedTerrainCache {
 							uint8_t symbol = 0;
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
-								const uint32_t chunkRow = decodeBitIndex / 32;
-								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunkRow = decodeBitIndex >> 5;
+								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 								if (chunkCacheIndex != chunkLoadIndex) {
@@ -203,7 +203,7 @@ namespace CompressedTerrainCache {
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
-								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 								if (chunkCacheIndex != chunkLoadIndex) {
@@ -300,7 +300,7 @@ namespace CompressedTerrainCache {
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
-								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 								if (chunkCacheIndex != chunkLoadIndex) {
@@ -345,6 +345,58 @@ namespace CompressedTerrainCache {
 			}
 		}
 
+		__global__ void k_accessSelectedTilesRawData(
+			const unsigned char* encodedTiles,
+			const unsigned char* encodedTrees,
+			const uint32_t blockAlignedElements,
+			const uint32_t tileSizeBytes,
+			const unsigned char* originalTileDataForComparison,
+			const uint32_t numTilesToTest,
+			const uint32_t terrainWidth,
+			const uint32_t terrainHeight,
+			const uint32_t tileWidth,
+			const uint32_t tileHeight,
+			const uint32_t* tileIndexList) {
+			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
+			const uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
+			const uint32_t localThreadIndex = threadIdx.x;
+			const uint32_t numBlocks = gridDim.x;
+			const uint32_t numGlobalThreads = HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBlocks;
+			const uint32_t* treePtr = reinterpret_cast<const uint32_t*>(encodedTrees);
+			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
+			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
+			__shared__ uint32_t s_tree[512];
+			uint32_t dummyVar = 0;
+			bool hasComputed = false;
+			// Tile steps.
+			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
+			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
+				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
+				if (tileIndex < numTilesToTest) {
+					hasComputed = true;
+					const uint32_t tile = tileIndexList[tileIndex];
+					const uint32_t numAccessSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+					for (uint32_t accessStep = 0; accessStep < numAccessSteps; accessStep++) {
+						const uint32_t byteIndex = accessStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
+						if (byteIndex < tileSizeBytes) {
+							const uint32_t tileLocalX = byteIndex % tileWidth;
+							const uint32_t tileLocalY = byteIndex / tileWidth;
+							const uint32_t tileGlobalX = tile % numTilesX;
+							const uint32_t tileGlobalY = tile / numTilesX;
+							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
+							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
+							if (globalX < terrainWidth && globalY < terrainHeight) {
+								dummyVar += originalTileDataForComparison[globalX + globalY * terrainWidth];
+							}
+						}
+					}
+				}
+			}
+
+			if (hasComputed && dummyVar == 0) {
+				printf("\nERROR! Decoded data should have at least 1 non-null character. \n");
+			}
+		}
 
 		__global__ void k_accessSelectedTiles(
 			const unsigned char* encodedTiles,
@@ -404,7 +456,7 @@ namespace CompressedTerrainCache {
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
-								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 								if (chunkCacheIndex != chunkLoadIndex) {
