@@ -37,31 +37,31 @@ namespace CompressedTerrainCache {
 
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
-						unsigned char leafNodeFound = 0;
-						uint32_t currentNodeIndex = 0;
-						uint8_t symbol = 0; 
-						while (!leafNodeFound) {
-							const uint32_t chunkColumn = localThreadIndex;
-							const uint32_t chunkRow = decodeBitIndex / 32;
-							const uint32_t chunkBit = decodeBitIndex % 32;
-							const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-							const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
-							const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
-							leafNodeFound = (node >> 8) & 0b11111111;
-							const uint16_t childNodeStart = node >> 16;
-							symbol = node & 0b11111111;
-							if (!leafNodeFound) {
-								if (bitBeingDecoded) {
-									currentNodeIndex = childNodeStart + 1;
-								}	else {
-									currentNodeIndex = childNodeStart;
+						if (byteIndex < tileSizeBytes) {
+							unsigned char leafNodeFound = 0;
+							uint32_t currentNodeIndex = 0;
+							uint8_t symbol = 0;
+							while (!leafNodeFound) {
+								const uint32_t chunkColumn = localThreadIndex;
+								const uint32_t chunkRow = decodeBitIndex / 32;
+								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
+								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
+								leafNodeFound = (node >> 8) & 0b11111111;
+								const uint16_t childNodeStart = node >> 16;
+								symbol = node & 0b11111111;
+								if (!leafNodeFound) {
+									if (bitBeingDecoded) {
+										currentNodeIndex = childNodeStart + 1;
+									}
+									else {
+										currentNodeIndex = childNodeStart;
+									}
 								}
+								decodeBitIndex++;
 							}
-							decodeBitIndex++;
-						}
-						decodeBitIndex--;
-
-						if (byteIndex  < tileSizeBytes) {
+							decodeBitIndex--;
 							const uint32_t tileLocalX = byteIndex % tileWidth;
 							const uint32_t tileLocalY = byteIndex / tileWidth;
 							const uint32_t tileGlobalX = tile % numTilesX;
@@ -77,7 +77,7 @@ namespace CompressedTerrainCache {
 			}
 
 			if (error > 0) {
-				printf("\nERROR! Encoded data - original data mismatch = %u. \n", error);
+				printf("\nERROR! Decoded data - original data mismatch = %u. \n", error);
 			}
 		}
 
@@ -113,16 +113,14 @@ namespace CompressedTerrainCache {
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
 							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
-							if (' ' == originalTileDataForComparison[globalX + globalY * terrainWidth]) {
-								dummyVar++;
-							}
+							dummyVar += originalTileDataForComparison[globalX + globalY * terrainWidth];
 						}
 					}
 				}
 			}
 
 			if (dummyVar == 0) {
-				printf("\nERROR! Benchmark test should include at least 1 space character. \n");
+				printf("\nERROR! Benchmark test should include at least 1 non-null character. \n");
 			}
 		}
 
@@ -161,48 +159,45 @@ namespace CompressedTerrainCache {
 
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
-						unsigned char leafNodeFound = 0;
-						uint32_t currentNodeIndex = 0;
-						uint8_t symbol = 0;
-						while (!leafNodeFound) {
-							const uint32_t chunkColumn = localThreadIndex;
-							const uint32_t chunkRow = decodeBitIndex / 32;
-							const uint32_t chunkBit = decodeBitIndex % 32;
-							const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-							const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
-							const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
-							leafNodeFound = (node >> 8) & 0b11111111;
-							const uint16_t childNodeStart = node >> 16;
-							symbol = node & 0b11111111;
-							if (!leafNodeFound) {
-								if (bitBeingDecoded) {
-									currentNodeIndex = childNodeStart + 1;
-								}
-								else {
-									currentNodeIndex = childNodeStart;
-								}
-							}
-							decodeBitIndex++;
-						}
-						decodeBitIndex--;
-
 						if (byteIndex < tileSizeBytes) {
+							unsigned char leafNodeFound = 0;
+							uint32_t currentNodeIndex = 0;
+							uint8_t symbol = 0;
+							while (!leafNodeFound) {
+								const uint32_t chunkColumn = localThreadIndex;
+								const uint32_t chunkRow = decodeBitIndex / 32;
+								const uint32_t chunkBit = decodeBitIndex % 32;
+								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
+								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
+								leafNodeFound = (node >> 8) & 0b11111111;
+								const uint16_t childNodeStart = node >> 16;
+								symbol = node & 0b11111111;
+								if (!leafNodeFound) {
+									if (bitBeingDecoded) {
+										currentNodeIndex = childNodeStart + 1;
+									}
+									else {
+										currentNodeIndex = childNodeStart;
+									}
+								}
+								decodeBitIndex++;
+							}
+							decodeBitIndex--;
 							const uint32_t tileLocalX = byteIndex % tileWidth;
 							const uint32_t tileLocalY = byteIndex / tileWidth;
 							const uint32_t tileGlobalX = tile % numTilesX;
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
 							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
-							if (' ' == symbol) {
-								dummyVar++;
-							}
+							dummyVar += symbol;
 						}
 					}
 				}
 			}
 
 			if (dummyVar == 0) {
-				printf("\nERROR! Benchmark test should include at least 1 space character. \n");
+				printf("\nERROR! Decoded data should have at least 1 non-null character. \n");
 			}
 		}
 	}

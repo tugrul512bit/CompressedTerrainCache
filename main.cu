@@ -1,8 +1,8 @@
 ﻿#include <stdio.h>
 #include <random>
+#undef NDEBUG
+#include <assert.h>
 #include "CompressedTerrainCache.cuh"
-
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
 __global__ void addKernel(int *c, const int *a, const int *b)
 {
@@ -21,14 +21,26 @@ int main()
     using T = unsigned char;
     // Generating sample terrain.
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
-    unsigned char table[7] = { 'n', 'v', 'i', 'd', 'i', 'a', ' ' };
-    for (size_t i = 0; i < numTerrainElements; i++) {
-        terrain.get()[i] = table[i % 7];
+    unsigned char terrainTypes[8] = {
+        '.', // sand
+        '~', // water
+        'o', // rock
+        '$', // bridge
+        ' ', // void
+        'X', // iron gate
+        '=', // magic chest
+        '#', // leather armor
+    };
+    for (size_t y = 0; y < terrainHeight; y++) {
+        for (size_t x = 0; x < terrainWidth; x++) {
+            size_t index = x + y * terrainWidth;
+            terrain.get()[index] = terrainTypes[rand() % 8];
+        }
     }
 
     // Creating tile manager that uses terrain as input.
     int deviceIndex = 0;
-    int numCpuThreads = 1;
+    int numCpuThreads = 20;
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
     // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();

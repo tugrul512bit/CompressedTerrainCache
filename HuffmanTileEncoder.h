@@ -7,16 +7,7 @@
 namespace HuffmanTileEncoder {
     // This is used for shape of encoded data.
 	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 256;
-	template<typename T>
-	int computeBlockAlignedSize(int tileWidth, int tileHeight) {
-		int size = tileWidth * tileHeight;
-		int alignedSize = sizeof(T) * size;
-		int parallelChunkSize = sizeof(uint32_t) * NUM_CUDA_THREADS_PER_BLOCK;
-		while (alignedSize % parallelChunkSize != 0) {
-			alignedSize++;
-		}
-		return alignedSize;
-	}
+	
 	// For defining area of tile by two corners (top-left, bottom-right)
 	struct Rectangle {
 		uint64_t x1, y1, x2, y2;
@@ -28,13 +19,17 @@ namespace HuffmanTileEncoder {
 		std::vector<unsigned char> encodedData;
 		std::vector<uint32_t> encodedTree;
 		int index;
+		int blockAlignedTileBytes;
+		Tile():blockAlignedTileBytes(0) {
+		}
 		void copyInput(uint64_t terrainWidth, uint64_t terrainHeight, T* terrainPtr) {
 			int tileWidth = area.x2 - area.x1;
 			int tileHeight = area.y2 - area.y1;
-			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
 			sourceData.resize(sizeof(T) * tileWidth * tileHeight);
-			encodedData.resize(alignedSize);
-			std::fill(encodedData.begin(), encodedData.end(), 0);
+			if (blockAlignedTileBytes > 0) {
+				encodedData.resize(blockAlignedTileBytes);
+				std::fill(encodedData.begin(), encodedData.end(), 0);
+			}
 			int localIndex = 0;
 			T defaultVal = T();
 			for (uint64_t y = area.y1; y < area.y2; y++) {
@@ -50,10 +45,8 @@ namespace HuffmanTileEncoder {
 				}
 			}
 		}
-		void encode() {
-			int tileWidth = area.x2 - area.x1;
-			int tileHeight = area.y2 - area.y1;
-			int alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
+		// when pass = 1, it only measures maximum bit stream length.
+		int encode(bool measureBitLength = false) {
 			int histogram[256];
 			for (int i = 0; i < 256; i++) {
 				histogram[i] = 0;
@@ -61,7 +54,7 @@ namespace HuffmanTileEncoder {
 			for (unsigned char& c : sourceData) {
 				histogram[c]++;
 			}
-			int virtualPadding = alignedSize - sourceData.size();
+			int virtualPadding = blockAlignedTileBytes - sourceData.size();
 			if (virtualPadding > 0) {
 				histogram[0] += virtualPadding;
 			}
@@ -192,50 +185,54 @@ namespace HuffmanTileEncoder {
 				currentCodeBitsForThread[thread] = 0;
 			}
 			
+			int bitLength = 0;
 			uint32_t one = 1;
-			for (int i = 0; i < alignedSize; i++) {
+			for (int i = 0; i < numBytes; i++) {
 				int thread = i % NUM_CUDA_THREADS_PER_BLOCK;
-
 				uint32_t code;
 				uint32_t codeLength;
-				if (i < numBytes) {
-					code = codeMapping[sourceData[i]];
-					codeLength = codeLengthMapping[sourceData[i]];
-				}	else {
-					code = codeMapping[0];
-					codeLength = codeLengthMapping[0];
+				code = codeMapping[sourceData[i]];
+				codeLength = codeLengthMapping[sourceData[i]];
+				if (!measureBitLength) {
+					for (int bit = 0; bit < codeLength; bit++) {
+						// Inside an integer.
+						uint32_t bitPos = currentCodeBitsForThread[thread] % 32;
+						// Inside a column of integers.
+						uint32_t row = currentCodeBitsForThread[thread] / 32;
+						uint32_t col = thread;
+						uint32_t idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
+						uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
+						uint32_t bitData = (code >> bit) & one;
+						data = data | (bitData << bitPos);
+						reinterpret_cast<uint32_t*>(encodedData.data())[idx] = data;
+						currentCodeBitsForThread[thread]++;
+					}
 				}
-
-				for (int bit = 0; bit < codeLength; bit++) {
-					// Inside an integer.
-					uint32_t bitPos = currentCodeBitsForThread[thread] % 32;
-					// Inside a column of integers.
-					uint32_t row = currentCodeBitsForThread[thread] / 32;
-					uint32_t col = thread;
-					uint32_t idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
-					uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
-					uint32_t bitData = (code >> bit) & one;
-					data = data | (bitData << bitPos);
-					reinterpret_cast<uint32_t*>(encodedData.data())[idx] = data;
-					currentCodeBitsForThread[thread]++;
+				else {
+					currentCodeBitsForThread[thread] += codeLength;
 				}
 			}
+			
+			for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
+				if (bitLength < currentCodeBitsForThread[thread]) {
+					bitLength = currentCodeBitsForThread[thread];
+				}
+			}
+			return bitLength;
 		}
 
 		void copyOutput(unsigned char* encodedTilesPtr, unsigned char* encodedTreesPtr) {
-			int tileWidth = area.x2 - area.x1;
-			int tileHeight = area.y2 - area.y1;
-			uint64_t alignedSize = computeBlockAlignedSize<T>(tileWidth, tileHeight);
-			uint64_t outputTileOffset = index * alignedSize;
-			uint64_t outputTreeOffset = index * (uint64_t)512;
-			int treeElements = encodedTree.size();
-			uint32_t* treePtr = reinterpret_cast<uint32_t*>(encodedTreesPtr);
-			treePtr[outputTreeOffset++] = treeElements;
-			for (int m = 0; m < treeElements; m++) {
-				treePtr[outputTreeOffset++] = encodedTree[m];
+			if (blockAlignedTileBytes > 0) {
+				uint64_t outputTileOffset = index * (uint64_t)blockAlignedTileBytes;
+				uint64_t outputTreeOffset = index * (uint64_t)512;
+				int treeElements = encodedTree.size();
+				uint32_t* treePtr = reinterpret_cast<uint32_t*>(encodedTreesPtr);
+				treePtr[outputTreeOffset++] = treeElements;
+				for (int m = 0; m < treeElements; m++) {
+					treePtr[outputTreeOffset++] = encodedTree[m];
+				}
+				std::copy(encodedData.begin(), encodedData.end(), encodedTilesPtr + outputTileOffset);
 			}
-
-			std::copy(encodedData.begin(), encodedData.end(), encodedTilesPtr + outputTileOffset);
 		}
 	};
 }
