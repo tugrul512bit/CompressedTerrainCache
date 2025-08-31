@@ -310,7 +310,7 @@ namespace CompressedTerrainCache {
 			cudaDeviceProp deviceProperties;
 			CUDA_CHECK(cudaGetDeviceProperties(&deviceProperties, deviceIndex));
 			// Todo: optimize this for higher occupancy, without using non-in-flight-blocks.
-			numBlocksToLaunch = deviceProperties.multiProcessorCount;
+			numBlocksToLaunch = deviceProperties.multiProcessorCount * 3;
 			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
 
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
@@ -452,7 +452,7 @@ namespace CompressedTerrainCache {
 			auto end = std::chrono::high_resolution_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			auto time = (dur.count() / 20000000.0);
-			double dataSize = tileSizeBytes * numTiles;
+			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
 			std::cout << "Accessing " << numTiles << " tiles of raw terrain data through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
@@ -477,7 +477,7 @@ namespace CompressedTerrainCache {
 			auto end = std::chrono::high_resolution_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			auto time = (dur.count() / 20000000.0);
-			double dataSize = tileSizeBytes * numTiles;
+			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
 			std::cout << "Accessing " << numTiles << " encoded tiles through unified memory (RAM -> VRAM) + decoding: " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
 		}
@@ -526,7 +526,7 @@ namespace CompressedTerrainCache {
 			auto end = std::chrono::high_resolution_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			auto time = (dur.count() / 20000000.0);
-			double dataSize = tileSizeBytes * numTiles;
+			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
 			std::cout << "Accessing " << numTiles << " tiles of raw terrain data through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
@@ -555,7 +555,7 @@ namespace CompressedTerrainCache {
 			auto end = std::chrono::high_resolution_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			auto time = (dur.count() / 20000000.0);
-			double dataSize = tileSizeBytes * numTiles;
+			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
 			std::cout << "Accessing "<< numTiles <<" encoded tiles through unified memory(RAM->VRAM) + decoding: " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}

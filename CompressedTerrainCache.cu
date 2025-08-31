@@ -118,11 +118,13 @@ namespace CompressedTerrainCache {
 			const uint32_t localThreadIndex = threadIdx.x;
 			const uint32_t numBlocks = gridDim.x;
 			uint32_t dummyVar = 0;
+			bool computed = false;
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
 				const uint32_t tile = tileStep * numBlocks + blockIdx.x;
 				if (tile < numTilesToTest) {
+					computed = true;
 					// Access steps.
 					const uint32_t numAccessSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 					for (uint32_t accessStep = 0; accessStep < numAccessSteps; accessStep++) {
@@ -142,7 +144,7 @@ namespace CompressedTerrainCache {
 				}
 			}
 
-			if (dummyVar == 0) {
+			if (computed && dummyVar == 0) {
 				printf("\nERROR! Original terrain should include at least 1 non-null character. \n");
 			}
 		}
@@ -169,6 +171,7 @@ namespace CompressedTerrainCache {
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
 			__shared__ uint32_t s_tree[512];
 			uint32_t dummyVar = 0;
+			bool computed = false;
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
@@ -180,6 +183,7 @@ namespace CompressedTerrainCache {
 				const uint32_t* treeBlockPtr = &treePtr[512 * tile];
 
 				if (tile < numTilesToTest) {
+					computed = true;
 					// Loading tree into smem.
 					const uint32_t numNodes = treeBlockPtr[0];
 					const uint32_t numTreeLoadingSteps = (1 + numNodes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
@@ -239,7 +243,7 @@ namespace CompressedTerrainCache {
 				}
 			}
 
-			if (dummyVar == 0) {
+			if (computed && dummyVar == 0) {
 				printf("\nERROR! Decoded data should have at least 1 non-null character. \n");
 			}
 		}

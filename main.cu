@@ -8,10 +8,10 @@ int main()
 {
     cv::namedWindow("2D Render Window (Huffman Encoded Tiles + Caching)");
     cv::resizeWindow("2D Render Window (Huffman Encoded Tiles + Caching)", 1024, 1024);
-    size_t terrainWidth = 20003;
-    size_t terrainHeight = 14005;
-    size_t tileWidth = 210;
-    size_t tileHeight = 200;
+    size_t terrainWidth = 1024;
+    size_t terrainHeight = 1024;
+    size_t tileWidth = 256;
+    size_t tileHeight = 256;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
     // Generating sample terrain.
@@ -29,7 +29,7 @@ int main()
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            terrain.get()[index] = terrainTypes[rand() % 8];
+            terrain.get()[index] = terrainTypes[rand() & 7];
         }
     }
 
