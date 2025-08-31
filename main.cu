@@ -1,10 +1,13 @@
 ﻿#include <stdio.h>
 #include <random>
+// Cached encoder tool for 2d terrain.
 #include "CompressedTerrainCache.cuh"
-
+// OpenCV4 for 2d render.
+#include<opencv2/opencv.hpp>
 int main()
 {
-    
+    cv::namedWindow("2D Render Window (Huffman Encoded Tiles + Caching)");
+    cv::resizeWindow("2D Render Window (Huffman Encoded Tiles + Caching)", 1024, 1024);
     size_t terrainWidth = 20003;
     size_t terrainHeight = 14005;
     size_t tileWidth = 210;
@@ -67,5 +70,7 @@ int main()
     }
     tileManager.benchmarkForSelectedTilesNormalAccess(tileIndexList);
     tileManager.benchmarkForSelectedTilesEncodedAccess(tileIndexList);
+
+    cv::destroyAllWindows();
     return 0;
 }
