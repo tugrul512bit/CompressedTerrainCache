@@ -9,6 +9,8 @@
 #include <condition_variable>
 #include <iostream>
 #include "HuffmanTileEncoder.h"
+// For MSVC to see the header for syncthreads.
+#define __CUDACC__
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -75,6 +77,21 @@ namespace CompressedTerrainCache {
 			const uint32_t tileWidth,
 			const uint32_t tileHeight,
 			const uint32_t* tileIndexList);
+
+
+		__global__ void k_accessSelectedTiles(
+			const unsigned char* encodedTiles,
+			const unsigned char* encodedTrees,
+			const uint32_t blockAlignedElements,
+			const uint32_t tileSizeBytes,
+			const unsigned char* originalTileDataForComparison,
+			const uint32_t numTilesToTest,
+			const uint32_t terrainWidth,
+			const uint32_t terrainHeight,
+			const uint32_t tileWidth,
+			const uint32_t tileHeight,
+			const uint32_t* tileIndexList);
+
 	}
 	namespace Helper {
 		struct UnifiedMemory {
@@ -269,6 +286,7 @@ namespace CompressedTerrainCache {
 		uint64_t height;
 		unsigned char* terrain;
 		int blockAlignedTileBytes;
+		uint32_t numBlocksToLaunch;
 		TileManager(T* terrainPtr, uint64_t widthPrm, uint64_t heightPrm, uint64_t tileWidthPrm, uint64_t tileHeightPrm,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
 			tileWidth = tileWidthPrm;
 			tileHeight = tileHeightPrm;
@@ -278,6 +296,10 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaInitDevice(deviceIndex, cudaDeviceScheduleAuto, cudaInitDeviceFlagsAreValid));
 			CUDA_CHECK(cudaSetDevice(deviceIndex));
 			CUDA_CHECK(cudaStreamCreate(&stream));
+			cudaDeviceProp deviceProperties;
+			CUDA_CHECK(cudaGetDeviceProperties(&deviceProperties, deviceIndex));
+			// Todo: optimize this for higher occupancy, without using non-in-flight-blocks.
+			numBlocksToLaunch = deviceProperties.multiProcessorCount;
 			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
 
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
@@ -395,7 +417,7 @@ namespace CompressedTerrainCache {
 			uint32_t tw = tileWidth;
 			uint32_t th = tileHeight;
 			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th };
-			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeTile, dim3(256, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeTile, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 		}
 		void benchmarkNormalAccess() {
@@ -413,7 +435,7 @@ namespace CompressedTerrainCache {
 			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th };
 			auto start = std::chrono::high_resolution_clock::now();
 			for (int i = 0; i < 20; i++) {
-				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessTileNormally, dim3(256, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessTileNormally, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 				CUDA_CHECK(cudaStreamSynchronize(stream));
 			}
 			auto end = std::chrono::high_resolution_clock::now();
@@ -438,7 +460,7 @@ namespace CompressedTerrainCache {
 			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th };
 			auto start = std::chrono::high_resolution_clock::now();
 			for (int i = 0; i < 20; i++) {
-				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessDecodedTile, dim3(256, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessDecodedTile, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 				CUDA_CHECK(cudaStreamSynchronize(stream));
 			}
 			auto end = std::chrono::high_resolution_clock::now();
@@ -446,7 +468,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Accessing decoded tiles through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
+			std::cout << "Accessing " << numTiles << " decoded tiles through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
 		}
 		void unitTestForSelectedDataIntegrity(std::vector<uint32_t> tileIndexList) {
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
@@ -465,8 +487,37 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
 			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList };
-			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeSelectedTiles, dim3(256, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
+		}
+		void benchmarkForSelectedTiles(std::vector<uint32_t> tileIndexList) {
+			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
+			if (memoryForCustomBlockSelection.numBytes < selectionBytes) {
+				memoryForCustomBlockSelection = Helper::UnifiedMemory(selectionBytes);
+			}
+			uint32_t blockAligned32BitElements = blockAlignedTileBytes / sizeof(uint32_t);
+			unsigned char* tilePtr = memoryForEncodedTiles.ptr.get();
+			unsigned char* treePtr = memoryForEncodedTrees.ptr.get();
+			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
+			uint32_t numTiles = tileIndexList.size();
+			uint32_t w = width;
+			uint32_t h = height;
+			uint32_t tw = tileWidth;
+			uint32_t th = tileHeight;
+			auto start = std::chrono::high_resolution_clock::now();
+			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
+			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
+			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList };
+			for (int i = 0; i < 20; i++) {
+				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+				CUDA_CHECK(cudaStreamSynchronize(stream));
+			}
+			auto end = std::chrono::high_resolution_clock::now();
+			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+			auto time = (dur.count() / 20000000.0);
+			double dataSize = tileSizeBytes * numTiles;
+			double throughput = dataSize / time;
+			std::cout << "Decoding "<< numTiles <<" selected tiles through unified memory(RAM->VRAM) : " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
 		~TileManager() {
 			workers.clear();
