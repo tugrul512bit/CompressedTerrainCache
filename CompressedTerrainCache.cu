@@ -46,6 +46,8 @@ namespace CompressedTerrainCache {
 					// Each block is computed by whole block, so this is inside a branch that is taken by whole block.
 					__syncthreads();
 					// Decode steps.
+					uint32_t chunkCache = 0;
+					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -56,8 +58,13 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
 								const uint32_t chunkBit = decodeBitIndex % 32;
-								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								// Aggregated access to the unified mem.
+								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								if (chunkCacheIndex != chunkLoadIndex) {
+									chunkCache = chunkBlockPtr[chunkLoadIndex];
+									chunkCacheIndex = chunkLoadIndex;
+								}
+								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
@@ -185,6 +192,8 @@ namespace CompressedTerrainCache {
 					// Each block is computed by whole block, so this is inside a branch that is taken by whole block.
 					__syncthreads();
 					// Decode steps.
+					uint32_t chunkCache = 0;
+					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -195,8 +204,13 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
 								const uint32_t chunkBit = decodeBitIndex % 32;
-								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								// Aggregated access to the unified mem.
+								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								if (chunkCacheIndex != chunkLoadIndex) {
+									chunkCache = chunkBlockPtr[chunkLoadIndex];
+									chunkCacheIndex = chunkLoadIndex;
+								}
+								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
@@ -275,6 +289,8 @@ namespace CompressedTerrainCache {
 					// Each block is computed by whole block, so this is inside a branch that is taken by whole block.
 					__syncthreads();
 					// Decode steps.
+					uint32_t chunkCache = 0;
+					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -285,8 +301,13 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
 								const uint32_t chunkBit = decodeBitIndex % 32;
-								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								// Aggregated access to the unified mem.
+								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								if (chunkCacheIndex != chunkLoadIndex) {
+									chunkCache = chunkBlockPtr[chunkLoadIndex];
+									chunkCacheIndex = chunkLoadIndex;
+								}
+								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
@@ -372,6 +393,8 @@ namespace CompressedTerrainCache {
 					// Each block is computed by whole block, so this is inside a branch that is taken by whole block.
 					__syncthreads();
 					// Decode steps.
+					uint32_t chunkCache = 0;
+					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -382,8 +405,13 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex / 32;
 								const uint32_t chunkBit = decodeBitIndex % 32;
-								const uint32_t chunk = chunkBlockPtr[chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK];
-								const uint32_t bitBeingDecoded = (chunk >> chunkBit) & one;
+								// Aggregated access to the unified mem.
+								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								if (chunkCacheIndex != chunkLoadIndex) {
+									chunkCache = chunkBlockPtr[chunkLoadIndex];
+									chunkCacheIndex = chunkLoadIndex;
+								}
+								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;

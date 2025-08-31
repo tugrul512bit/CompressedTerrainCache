@@ -31,8 +31,8 @@ int main()
     }
 
     // Creating tile manager that uses terrain as input.
-    int deviceIndex = 0;
-    int numCpuThreads = 20;
+    int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
+    int numCpuThreads = 20; // can have up to concurrency limit number of cpu threads.
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
     // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();
@@ -46,11 +46,11 @@ int main()
     // Testing if selected tile decoding works.
     // Selected tiles: 10, 25, 44, 45 where consecutive values are on same row of tiles except at edges.
     tileManager.unitTestForSelectedDataIntegrity({ 10, 25, 44, 45 });
-    // Benchmarking for custom selection of tiles (using player position vs terrain coordinates)
-    uint32_t playerX = terrainWidth / 2;
+    // Benchmarking for custom selection of tiles (using player position + visibility range vs terrain coordinates)
+    uint32_t playerX = terrainWidth / 2; // player is on middle of terrain.
     uint32_t playerY = terrainHeight / 2;
     uint32_t playerVisibilityRadius = 2500; // player can see 2500 units far.
-    uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
+    uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth; // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX)
     uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint32_t numTiles = numTilesX * numTilesY;
     std::vector<uint32_t> tileIndexList;

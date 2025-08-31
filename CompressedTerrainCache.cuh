@@ -443,7 +443,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Direct access to raw terrain in tiled pattern through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
+			std::cout << "Direct access to raw terrain data in tiled pattern through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
 		}
 		void benchmarkDecodedAccess() {
 			uint32_t blockAligned32BitElements = blockAlignedTileBytes / sizeof(uint32_t);
@@ -468,7 +468,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Accessing " << numTiles << " decoded tiles through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
+			std::cout << "Accessing " << numTiles << " encoded tiles through unified memory (RAM -> VRAM) + decoding: " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
 		}
 		void unitTestForSelectedDataIntegrity(std::vector<uint32_t> tileIndexList) {
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
@@ -517,7 +517,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Decoding "<< numTiles <<" selected tiles through unified memory(RAM->VRAM) : " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
+			std::cout << "Accessing "<< numTiles <<" encoded tiles through unified memory(RAM->VRAM) + decoding: " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
 		~TileManager() {
 			workers.clear();
