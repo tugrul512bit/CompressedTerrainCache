@@ -454,7 +454,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Direct access to raw terrain data in tiled pattern through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
+			std::cout << "Accessing " << numTiles << " tiles of raw terrain data through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
 		void benchmarkDecodedAccess() {
 			uint32_t blockAligned32BitElements = blockAlignedTileBytes / sizeof(uint32_t);

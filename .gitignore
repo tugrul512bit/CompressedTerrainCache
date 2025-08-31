@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Ignore vcpkg local folders for opencv
+vcpkg/
+vcpkg_installed/
+buildtrees/
+downloads/
