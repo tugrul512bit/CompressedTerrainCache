@@ -1,14 +1,6 @@
 ﻿#include <stdio.h>
 #include <random>
-#undef NDEBUG
-#include <assert.h>
 #include "CompressedTerrainCache.cuh"
-
-__global__ void addKernel(int *c, const int *a, const int *b)
-{
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
-}
 
 int main()
 {
@@ -48,5 +40,8 @@ int main()
     tileManager.benchmarkNormalAccess();
     // Benchmarking decoded access for all tiles.
     tileManager.benchmarkDecodedAccess();
+    // Testing if selected tile decoding works.
+    // Selected tiles: 10, 25, 44, 45 where consecutive values are on same row of tiles except at edges.
+    tileManager.unitTestForSelectedDataIntegrity({ 10, 25, 44, 45 });
     return 0;
 }
