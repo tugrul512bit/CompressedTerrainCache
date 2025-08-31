@@ -4,32 +4,27 @@
 #include "CompressedTerrainCache.cuh"
 // OpenCV4 for 2d render.
 #include<opencv2/opencv.hpp>
+
 int main()
 {
-    cv::namedWindow("2D Render Window (Huffman Encoded Tiles + Caching)");
-    cv::resizeWindow("2D Render Window (Huffman Encoded Tiles + Caching)", 1024, 1024);
-    size_t terrainWidth = 1024;
-    size_t terrainHeight = 1024;
+
+    size_t terrainWidth = 1024 * 7;
+    size_t terrainHeight = 1024 * 7;
     size_t tileWidth = 256;
     size_t tileHeight = 256;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
     // Generating sample terrain.
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
-    unsigned char terrainTypes[8] = {
-        '.', // sand
-        '~', // water
-        'o', // rock
-        '$', // bridge
-        ' ', // void
-        'X', // iron gate
-        '=', // magic chest
-        '#' // leather armor
-    };
+
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            terrain.get()[index] = terrainTypes[rand() & 7];
+            size_t dx = x - terrainWidth;
+            size_t dy = y - terrainHeight;
+            size_t d = sqrt(dx*dx + dy*dy);
+            unsigned char color = (d * 128) / terrainWidth;
+            terrain.get()[index] = color;
         }
     }
 
@@ -37,11 +32,16 @@ int main()
     int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
     int numCpuThreads = 20; // can have up to concurrency limit number of cpu threads.
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
+
     // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();
-    tileManager.unitTestForDataIntegrity();
-    tileManager.unitTestForDataIntegrity();
-    tileManager.unitTestForDataIntegrity();
+    cv::namedWindow("2D Render Window (Huffman Encoded Tiles + Caching)");
+    cv::resizeWindow("2D Render Window (Huffman Encoded Tiles + Caching)", 1024, 1024);
+    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get()/*terrain.get()*/);
+    cv::Mat downScaledImg;
+    cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
+    cv::imshow("2D Render Window (Huffman Encoded Tiles + Caching)", downScaledImg);
+    cv::waitKey(10000);
     // Benchmarking normal direct access for all tiles.
     tileManager.benchmarkNormalAccess();
     // Benchmarking decoded access for all tiles.
@@ -68,9 +68,12 @@ int main()
             }
         }
     }
+    // For testing >4GB data, adding the last tile.
+    std::cout << "number of tiles = " << numTiles << std::endl;
+    tileIndexList.push_back(numTiles - 1);
     tileManager.benchmarkForSelectedTilesNormalAccess(tileIndexList);
     tileManager.benchmarkForSelectedTilesEncodedAccess(tileIndexList);
-
+    
     cv::destroyAllWindows();
     return 0;
 }

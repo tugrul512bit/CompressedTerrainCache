@@ -32,7 +32,7 @@ namespace CompressedTerrainCache {
 			const unsigned char* encodedTrees,
 			const uint32_t blockAlignedElements,
 			const uint32_t tileSizeBytes,
-			const unsigned char* originalTileDataForComparison,
+			unsigned char* originalTileDataForComparison,
 			const uint32_t numTilesToTest,
 			const uint32_t terrainWidth,
 			const uint32_t terrainHeight,
