@@ -7,11 +7,10 @@
 
 int main()
 {
-
-    size_t terrainWidth = 1024 * 7;
-    size_t terrainHeight = 1024 * 7;
-    size_t tileWidth = 256;
-    size_t tileHeight = 256;
+    size_t terrainWidth = 1024 * 10;
+    size_t terrainHeight = 1024 * 10;
+    size_t tileWidth = 128;
+    size_t tileHeight = 128;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
     // Generating sample terrain.

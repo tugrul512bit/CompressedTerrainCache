@@ -105,9 +105,27 @@ namespace CompressedTerrainCache {
 			const uint32_t* tileIndexList);
 	}
 	namespace Helper {
+		struct DeviceMemory {
+			std::shared_ptr<unsigned char> ptr;
+			uint64_t numBytes;
+			DeviceMemory(cudaStream_t stream = cudaStream_t(), uint64_t sizeBytes = 0) {
+				if (sizeBytes == 0) {
+					ptr = nullptr;
+					numBytes = 0;
+				}
+				else {
+					numBytes = sizeBytes;
+					unsigned char* tmp;
+					CUDA_CHECK(cudaMallocAsync(&tmp, sizeBytes, stream));
+					CUDA_CHECK(cudaStreamSynchronize(stream));
+					ptr = std::shared_ptr<unsigned char>(tmp, [stream](unsigned char* ptr) { CUDA_CHECK(cudaFreeAsync(ptr, stream)); CUDA_CHECK(cudaStreamSynchronize(stream)); });
+				}
+			}
+			~DeviceMemory() {}
+		};
 		struct UnifiedMemory {
 			std::shared_ptr<unsigned char> ptr;
-			uint32_t numBytes;
+			uint64_t numBytes;
 			UnifiedMemory(uint64_t sizeBytes = 0) {
 				if (sizeBytes == 0) {
 					ptr = nullptr;
@@ -120,9 +138,7 @@ namespace CompressedTerrainCache {
 					ptr = std::shared_ptr<unsigned char>(tmp, [](unsigned char* ptr) { CUDA_CHECK(cudaFree(ptr)); });
 				}
 			}
-			~UnifiedMemory() {
-
-			}
+			~UnifiedMemory() {}
 		};
 		// Contains commands to be sent from main CPU thread to worker threads.
 		template<typename T>
@@ -284,9 +300,15 @@ namespace CompressedTerrainCache {
 	struct TileManager {
 		int deviceIndex;
 		cudaStream_t stream;
+		// This is for the result or output to be used in a game logic that needs surroundings on a terrain data.
+		Helper::DeviceMemory memoryForLoadedTerrain;
+		// This is for the encoded tiles to be used in efficient data retrieval from host to device for any unknown pattern in runtime.
 		Helper::UnifiedMemory memoryForEncodedTiles;
+		// This is for the Huffman Tree of each encoded tile, maximum 512 integers (8bit symbols).
 		Helper::UnifiedMemory memoryForEncodedTrees;
+		// This is for the original terrain data to be used as comparisons in benchmarks or data-integrity checks.
 		Helper::UnifiedMemory memoryForOriginalTerrain;
+		// This is an input for selecting tiles dynamically from host-given array of tile indices (row-major tile order)
 		Helper::UnifiedMemory memoryForCustomBlockSelection;
 		std::shared_ptr<std::mutex> tilesLock;
 		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
@@ -298,7 +320,10 @@ namespace CompressedTerrainCache {
 		unsigned char* terrain;
 		int blockAlignedTileBytes;
 		uint32_t numBlocksToLaunch;
-		TileManager(T* terrainPtr, uint64_t widthPrm, uint64_t heightPrm, uint64_t tileWidthPrm, uint64_t tileHeightPrm,  int numThreads = std::thread::hardware_concurrency(), int deviceId = 0) {
+		TileManager(T* terrainPtr, uint64_t widthPrm, uint64_t heightPrm, 
+					uint64_t tileWidthPrm, uint64_t tileHeightPrm,					
+					int numThreads = std::thread::hardware_concurrency(), 
+					int deviceId = 0) {
 			tileWidth = tileWidthPrm;
 			tileHeight = tileHeightPrm;
 			width = widthPrm;
@@ -531,15 +556,20 @@ namespace CompressedTerrainCache {
 			std::cout << "Accessing " << numTiles << " tiles of raw terrain data through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
 		void benchmarkForSelectedTilesEncodedAccess(std::vector<uint32_t> tileIndexList) {
+			uint32_t numTiles = tileIndexList.size();
+			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
 			if (memoryForCustomBlockSelection.numBytes < selectionBytes) {
 				memoryForCustomBlockSelection = Helper::UnifiedMemory(selectionBytes);
 			}
+			if (memoryForLoadedTerrain.numBytes < tileSizeBytes * (uint64_t)numTiles) {
+				memoryForLoadedTerrain = Helper::DeviceMemory(stream, tileSizeBytes * (uint64_t)numTiles);
+			}
 			uint32_t blockAligned32BitElements = blockAlignedTileBytes / sizeof(uint32_t);
 			unsigned char* tilePtr = memoryForEncodedTiles.ptr.get();
 			unsigned char* treePtr = memoryForEncodedTrees.ptr.get();
-			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
-			uint32_t numTiles = tileIndexList.size();
+
+
 			uint32_t w = width;
 			uint32_t h = height;
 			uint32_t tw = tileWidth;
@@ -561,6 +591,8 @@ namespace CompressedTerrainCache {
 		}
 		~TileManager() {
 			workers.clear();
+			memoryForLoadedTerrain.~DeviceMemory();
+			CUDA_CHECK(cudaStreamSynchronize(stream));
 			CUDA_CHECK(cudaStreamDestroy(stream));
 		}
 	};
