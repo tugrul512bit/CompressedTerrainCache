@@ -338,7 +338,7 @@ namespace CompressedTerrainCache {
 			
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAttachGlobal));
-			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForOriginalTerrain.ptr.get(), numTiles * tileWidth * tileHeight * sizeof(T), cudaMemAttachGlobal));
+			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 
 			int concurrentManagedAccess = 0;
@@ -350,7 +350,7 @@ namespace CompressedTerrainCache {
 				loc.type = cudaMemLocationTypeDevice;
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAdviseSetAccessedBy, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAdviseSetAccessedBy, loc));
-				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), numTiles * tileWidth * tileHeight * sizeof(T), cudaMemAdviseSetAccessedBy, loc));
+				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAdviseSetAccessedBy, loc));
 			}
 			else {
 				// Fallback to read-mostly that doesn't avoid uncached reads.
@@ -360,7 +360,7 @@ namespace CompressedTerrainCache {
 				loc.type = cudaMemLocationTypeDevice;
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAdviseSetReadMostly, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAdviseSetReadMostly, loc));
-				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), numTiles * tileWidth * tileHeight * sizeof(T), cudaMemAdviseSetReadMostly, loc));
+				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAdviseSetReadMostly, loc));
 			}
 		}
 		void unitTestForDataIntegrity() {
@@ -402,7 +402,7 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 20000000.0);
 			double dataSize = tileSizeBytes * numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Normally accessing tiles through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
+			std::cout << "Direct access to raw terrain in tiled pattern through unified memory (RAM -> VRAM): " << time << " seconds per kernel. Throughput = " << throughput / (1024 * 1024 * 1024) << " GB/s " << std::endl;
 		}
 		void benchmarkDecodedAccess() {
 			uint32_t blockAligned32BitElements = blockAlignedTileBytes / sizeof(uint32_t);

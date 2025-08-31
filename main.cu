@@ -13,10 +13,10 @@ __global__ void addKernel(int *c, const int *a, const int *b)
 int main()
 {
     
-    size_t terrainWidth = 10000;
-    size_t terrainHeight = 10000;
-    size_t tileWidth = 100;
-    size_t tileHeight = 100;
+    size_t terrainWidth = 20003;
+    size_t terrainHeight = 14005;
+    size_t tileWidth = 210;
+    size_t tileHeight = 200;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
     // Generating sample terrain.
@@ -29,7 +29,7 @@ int main()
         ' ', // void
         'X', // iron gate
         '=', // magic chest
-        '#', // leather armor
+        '#' // leather armor
     };
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {

@@ -68,8 +68,10 @@ namespace CompressedTerrainCache {
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
 							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
-							if (symbol != originalTileDataForComparison[globalX + globalY * terrainWidth]) {
-								error++;
+							if (globalX < terrainWidth && globalY < terrainHeight) {
+								if (symbol != originalTileDataForComparison[globalX + globalY * terrainWidth]) {
+									error++;
+								}
 							}
 						}
 					}
@@ -113,14 +115,16 @@ namespace CompressedTerrainCache {
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint32_t globalX = tileGlobalX * tileWidth + tileLocalX;
 							const uint32_t globalY = tileGlobalY * tileHeight + tileLocalY;
-							dummyVar += originalTileDataForComparison[globalX + globalY * terrainWidth];
+							if (globalX < terrainWidth && globalY < terrainHeight) {
+								dummyVar += originalTileDataForComparison[globalX + globalY * terrainWidth];
+							}
 						}
 					}
 				}
 			}
 
 			if (dummyVar == 0) {
-				printf("\nERROR! Benchmark test should include at least 1 non-null character. \n");
+				printf("\nERROR! Original terrain should include at least 1 non-null character. \n");
 			}
 		}
 
