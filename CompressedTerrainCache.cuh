@@ -389,7 +389,7 @@ namespace CompressedTerrainCache {
 			int num32BitChunksRequiredPerThread = (maxBitLength + sizeof(uint32_t) * 8 - 1) / (sizeof(uint32_t) * 8);
 			blockAlignedTileBytes = sizeof(uint32_t) * num32BitChunksRequiredPerThread * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 			// Assuming encoded bits are not greater than raw data.
-			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * blockAlignedTileBytes);
+			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * (uint64_t) blockAlignedTileBytes);
 			for (int i = 0; i < numThreads; i++) {
 				workers[i] = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees);
 			}
@@ -415,7 +415,7 @@ namespace CompressedTerrainCache {
 				workers[i]->wait();
 			}
 			
-			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAttachGlobal));
+			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTiles.ptr.get(), numTiles * (uint64_t)blockAlignedTileBytes, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamAttachMemAsync(stream, memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAttachGlobal));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -427,7 +427,7 @@ namespace CompressedTerrainCache {
 				cudaMemLocation loc;
 				loc.id = deviceIndex;
 				loc.type = cudaMemLocationTypeDevice;
-				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAdviseSetAccessedBy, loc));
+				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * (uint64_t)blockAlignedTileBytes, cudaMemAdviseSetAccessedBy, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAdviseSetAccessedBy, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAdviseSetAccessedBy, loc));
 			}
@@ -437,7 +437,7 @@ namespace CompressedTerrainCache {
 				cudaMemLocation loc;
 				loc.id = deviceIndex;
 				loc.type = cudaMemLocationTypeDevice;
-				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * blockAlignedTileBytes, cudaMemAdviseSetReadMostly, loc));
+				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTiles.ptr.get(), numTiles * (uint64_t)blockAlignedTileBytes, cudaMemAdviseSetReadMostly, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForEncodedTrees.ptr.get(), numTiles * sizeof(uint32_t) * 512, cudaMemAdviseSetReadMostly, loc));
 				CUDA_CHECK(cudaMemAdvise(memoryForOriginalTerrain.ptr.get(), width * height * sizeof(T), cudaMemAdviseSetReadMostly, loc));
 			}

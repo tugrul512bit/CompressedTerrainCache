@@ -23,6 +23,10 @@ namespace CompressedTerrainCache {
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
 			bool error = false;
 			__shared__ uint32_t s_tree[512];
+			for (uint32_t i = localThreadIndex; i < 512; i += HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) {
+				s_tree[i] = 0;
+			}
+			__syncthreads();
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
@@ -60,6 +64,9 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								if (chunkLoadIndex * sizeof(uint32_t) >= blockAlignedBytes) {
+									printf("@@@@ DECODE ERROR @@@@");
+								}
 								if (chunkCacheIndex != chunkLoadIndex) {
 									chunkCache = chunkBlockPtr[chunkLoadIndex];
 									chunkCacheIndex = chunkLoadIndex;
@@ -418,14 +425,11 @@ namespace CompressedTerrainCache {
 			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
 			__shared__ uint32_t s_tree[512];
-			uint32_t dummyVar = 0;
-			bool hasComputed = false;
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
 				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
 				if (tileIndex < numTilesToTest) {
-					hasComputed = true;
 					const uint32_t tile = tileIndexList[tileIndex];
 					const uint32_t numDecodeSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 					uint32_t decodeBitIndex = 0;

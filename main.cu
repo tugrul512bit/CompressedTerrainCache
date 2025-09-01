@@ -8,10 +8,10 @@
 
 int main()
 {
-    size_t terrainWidth = 1024 * 10;
-    size_t terrainHeight = 1024 * 10;
-    size_t tileWidth = 128;
-    size_t tileHeight = 128;
+    size_t terrainWidth = 10243;
+    size_t terrainHeight = 10242;
+    size_t tileWidth = 135;
+    size_t tileHeight = 133;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
     // Generating sample terrain (2D cos wave pattern).
@@ -19,7 +19,7 @@ int main()
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            unsigned char color = 128 + cos(x * 0.003f) * cos(y * 0.003f) * 127;
+            unsigned char color = 128 + cos(x * 0.005f) * cos(y * 0.005f) * 127;
             terrain.get()[index] = color;
         }
     }
@@ -31,6 +31,7 @@ int main()
 
     // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();
+
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
     cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get());
