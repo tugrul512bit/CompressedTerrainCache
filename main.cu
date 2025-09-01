@@ -8,10 +8,11 @@
 
 int main()
 {
-    uint64_t terrainWidth = 15000;
-    uint64_t terrainHeight = 15000;
-    uint64_t tileWidth = 200;
-    uint64_t tileHeight = 200;
+    uint64_t playerVisibilityRadius = 1500; // player can see this far.
+    uint64_t terrainWidth = 15 * 1024;
+    uint64_t terrainHeight = 15 * 1024;
+    uint64_t tileWidth = 256;
+    uint64_t tileHeight = 256;
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth; // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX)
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
@@ -62,7 +63,6 @@ int main()
                 angle += 0.000005f;
                 uint64_t playerX = terrainWidth / 2 + cos(angle) * terrainWidth / 4;
                 uint64_t playerY = terrainHeight / 2 + sin(angle) * terrainHeight / 4;
-                uint64_t playerVisibilityRadius = 2000; // player can see this far.
                 uint64_t distanceX = playerX - (tileX * tileWidth + tileWidth / 2);
                 uint64_t distanceY = playerY - (tileY * tileHeight + tileHeight / 2);
                 uint64_t distance = sqrt(distanceX * distanceX + distanceY * distanceY);
