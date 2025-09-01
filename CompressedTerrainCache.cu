@@ -206,7 +206,7 @@ namespace CompressedTerrainCache {
 							uint8_t symbol = 0;
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
-								const uint32_t chunkRow = decodeBitIndex / 32;
+								const uint32_t chunkRow = decodeBitIndex >> 5;
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
@@ -297,7 +297,7 @@ namespace CompressedTerrainCache {
 							uint8_t symbol = 0;
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
-								const uint32_t chunkRow = decodeBitIndex / 32;
+								const uint32_t chunkRow = decodeBitIndex >> 5;
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
@@ -454,7 +454,7 @@ namespace CompressedTerrainCache {
 							uint8_t symbol = 0;
 							while (!leafNodeFound) {
 								const uint32_t chunkColumn = localThreadIndex;
-								const uint32_t chunkRow = decodeBitIndex / 32;
+								const uint32_t chunkRow = decodeBitIndex >> 5;
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
