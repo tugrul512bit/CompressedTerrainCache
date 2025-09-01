@@ -21,7 +21,7 @@ namespace CompressedTerrainCache {
 			const uint32_t* treePtr = reinterpret_cast<const uint32_t*>(encodedTrees);
 			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
-			bool error = false;
+			int error = 0;
 			__shared__ uint32_t s_tree[512];
 			for (uint32_t i = localThreadIndex; i < 512; i += HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) {
 				s_tree[i] = 0;
@@ -31,8 +31,8 @@ namespace CompressedTerrainCache {
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
 				const uint32_t tile = tileStep * numBlocks + blockIdx.x;
+				
 				const uint32_t numDecodeSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
-				uint32_t decodeBitIndex = 0;
 				const uint32_t one = 1;
 				const uint32_t* chunkBlockPtr = &tilePtr[blockAlignedElements * (uint64_t)tile];
 				const uint32_t* treeBlockPtr = &treePtr[512 * tile];
@@ -52,21 +52,20 @@ namespace CompressedTerrainCache {
 					// Decode steps.
 					uint32_t chunkCache = 0;
 					uint32_t chunkCacheIndex = -1;
+					uint32_t decodeBitIndex = 0;
+					uint32_t last = 0;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
 							unsigned char leafNodeFound = 0;
 							uint32_t currentNodeIndex = 0;
 							uint8_t symbol = 0;
-							while (!leafNodeFound) {
+							while (leafNodeFound == 0) {
 								const uint32_t chunkColumn = localThreadIndex;
 								const uint32_t chunkRow = decodeBitIndex >> 5;
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
 								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
-								if (chunkLoadIndex * sizeof(uint32_t) >= blockAlignedBytes) {
-									printf("@@@@ DECODE ERROR @@@@");
-								}
 								if (chunkCacheIndex != chunkLoadIndex) {
 									chunkCache = chunkBlockPtr[chunkLoadIndex];
 									chunkCacheIndex = chunkLoadIndex;
@@ -76,17 +75,16 @@ namespace CompressedTerrainCache {
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
 								symbol = node & 0b11111111;
-								if (!leafNodeFound) {
-									if (bitBeingDecoded) {
-										currentNodeIndex = childNodeStart + 1;
-									}
-									else {
-										currentNodeIndex = childNodeStart;
-									}
+								if (bitBeingDecoded) {
+									currentNodeIndex = childNodeStart + 1;
+								}
+								else {
+									currentNodeIndex = childNodeStart;
 								}
 								decodeBitIndex++;
 							}
 							decodeBitIndex--;
+
 							const uint32_t tileLocalX = byteIndex % tileWidth;
 							const uint32_t tileLocalY = byteIndex / tileWidth;
 							const uint32_t tileGlobalX = tile % numTilesX;
@@ -95,9 +93,10 @@ namespace CompressedTerrainCache {
 							const uint64_t globalY = tileGlobalY * (uint64_t)tileHeight + tileLocalY;
 							if (globalX < terrainWidth && globalY < terrainHeight) {
 								if (symbol != originalTileDataForComparison[globalX + globalY * terrainWidth]) {
-									error = true;
+									error++;
 								}
 							}
+
 						}
 					}
 					__syncthreads();
@@ -105,7 +104,7 @@ namespace CompressedTerrainCache {
 			}
 
 			if (error) {
-				printf("\nERROR!! Decoded data - original data mismatch = %u. \n", error);
+				printf("\nERROR!! Decoded data - original data mismatch. %i \n", error);
 			}
 		}
 
@@ -466,19 +465,13 @@ namespace CompressedTerrainCache {
 									chunkCache = chunkBlockPtr[chunkLoadIndex];
 									chunkCacheIndex = chunkLoadIndex;
 								}
+								
 								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
 								symbol = node & 0b11111111;
-								if (!leafNodeFound) {
-									if (bitBeingDecoded) {
-										currentNodeIndex = childNodeStart + 1;
-									}
-									else {
-										currentNodeIndex = childNodeStart;
-									}
-								}
+								currentNodeIndex = bitBeingDecoded ? childNodeStart + 1 : childNodeStart;
 								decodeBitIndex++;
 							}
 							decodeBitIndex--;

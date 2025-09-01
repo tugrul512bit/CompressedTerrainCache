@@ -222,9 +222,9 @@ namespace CompressedTerrainCache {
 							std::unique_lock<std::mutex> lock(mutex);
 							if (commandQueue.empty()) {
 								busy = false;
-								if (bitLengthMax < tmpBitLengthMax) {
-									bitLengthMax = tmpBitLengthMax;
-								}
+							}
+							if (bitLengthMax < tmpBitLengthMax) {
+								bitLengthMax = tmpBitLengthMax;
 							}
 						}
 					}
@@ -386,7 +386,7 @@ namespace CompressedTerrainCache {
 			std::cout << "max bit length per thread to decode per tile = " << maxBitLength << std::endl;
 		
 			// Calculating striped-decodable tile size.
-			int num32BitChunksRequiredPerThread = (maxBitLength + sizeof(uint32_t) * 8 - 1) / (sizeof(uint32_t) * 8);
+			uint32_t num32BitChunksRequiredPerThread = (maxBitLength + sizeof(uint32_t) * 8 + 1) / (sizeof(uint32_t) * 8);
 			blockAlignedTileBytes = sizeof(uint32_t) * num32BitChunksRequiredPerThread * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 			// Assuming encoded bits are not greater than raw data.
 			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * (uint64_t) blockAlignedTileBytes);

@@ -19,7 +19,7 @@ int main()
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            unsigned char color = 128 + cos(x * 0.005f) * cos(y * 0.005f) * 127;
+            unsigned char color = 77 + cos(x * 0.003f) * cos(y * 0.003f) * 50;
             terrain.get()[index] = color;
         }
     }
@@ -49,7 +49,7 @@ int main()
     // Benchmarking for custom selection of tiles (using player position + visibility range vs terrain coordinates)
     uint32_t playerX = terrainWidth / 2; // player is on middle of terrain.
     uint32_t playerY = terrainHeight / 2;
-    uint32_t playerVisibilityRadius = 2500; // player can see 2500 units far.
+    uint32_t playerVisibilityRadius = 25000; // player can see 2500 units far.
     uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth; // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX)
     uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint32_t numTiles = numTilesX * numTilesY;
@@ -75,7 +75,8 @@ int main()
     // Downloading output tile data.
     CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
     // Clearing old terrain to see if visibility range works correctly.
-    std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), 0);
+    //std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), 0);
+    uint32_t numErrors = 0;
     uint32_t tileIndexInOutput = 0;
     for (uint32_t tileIndex : tileIndexList) {
         uint32_t tileX = tileIndex % numTilesX;
@@ -87,13 +88,14 @@ int main()
                 uint64_t terrainDestinationIndex = terrainX + terrainY * (uint64_t)terrainWidth;
                 uint64_t sourceIndex = tileIndexInOutput * (uint64_t)tileWidth * tileHeight + x + y * tileWidth;
                 if (terrainX < terrainWidth && terrainY < terrainHeight) {
+                    numErrors += (terrain.get()[terrainDestinationIndex] != loadedTilesOnHost_h[sourceIndex]);
                     terrain.get()[terrainDestinationIndex] = loadedTilesOnHost_h[sourceIndex];
                 }
             }
         }
         tileIndexInOutput++;
     }
-
+    std::cout << "erorrs = " << numErrors << std::endl;
     cv::namedWindow("Loaded Tiles");
     cv::resizeWindow("Loaded Tiles", 1024, 1024);
     cv::Mat img2(terrainHeight, terrainWidth, CV_8UC1, terrain.get());

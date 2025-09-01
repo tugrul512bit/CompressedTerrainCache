@@ -207,6 +207,7 @@ namespace HuffmanTileEncoder {
 						reinterpret_cast<uint32_t*>(encodedData.data())[idx] = data;
 						currentCodeBitsForThread[thread]++;
 					}
+
 				}
 				else {
 					currentCodeBitsForThread[thread] += codeLength;
