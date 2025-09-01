@@ -6,5 +6,8 @@
 - Cache-miss streams data from unified-memory (RAM) that is the compressed tile, then decompresses it within a block
 - CPU and GPU works asynchronously to hide latency and improve overall performance
 
-
+Currently only decoding on gpu is implemented:
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png)
+Todo:
+- 2D direct-mapped tile-cache
+- Cuda-compressible-memory for the direct-mapped-cache
