@@ -19,7 +19,7 @@ int main()
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            unsigned char color = 128 + cos(x * 0.01f) * cos(y * 0.01f) * 127;
+            unsigned char color = 128 + cos(x * 0.003f) * cos(y * 0.003f) * 127;
             terrain.get()[index] = color;
         }
     }

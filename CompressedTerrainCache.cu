@@ -98,7 +98,7 @@ namespace CompressedTerrainCache {
 			}
 
 			if (error) {
-				printf("\nERROR! Decoded data - original data mismatch = %u. \n", error);
+				printf("\nERROR!! Decoded data - original data mismatch = %u. \n", error);
 			}
 		}
 
@@ -463,7 +463,7 @@ namespace CompressedTerrainCache {
 									chunkCacheIndex = chunkLoadIndex;
 								}
 								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
-								const uint32_t node = treeBlockPtr[1 + currentNodeIndex];
+								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
 								const uint16_t childNodeStart = node >> 16;
 								symbol = node & 0b11111111;
