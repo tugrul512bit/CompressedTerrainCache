@@ -392,8 +392,14 @@ namespace CompressedTerrainCache {
 			}
 		}
 		
-		// Directly uses unified memory to fetch tile data.
-		unsigned char* accessSelectedTiles(std::vector<uint32_t> tileIndexList) {
+		/* 
+		Directly uses unified memory to fetch tile data.
+		Takes row-major list of tile indices to stream from RAM to VRAM.
+		Returns tiles loaded in the same order as the indices.
+		Elapsed time (in seconds) is written to the last parameter.
+		*/
+		unsigned char* accessSelectedTiles(std::vector<uint32_t> tileIndexList, double* elapsedTime=nullptr) {
+			auto start = std::chrono::high_resolution_clock::now();
 			uint32_t numTiles = tileIndexList.size();
 			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
@@ -410,7 +416,6 @@ namespace CompressedTerrainCache {
 			uint32_t h = height;
 			uint32_t tw = tileWidth;
 			uint32_t th = tileHeight;
-			auto start = std::chrono::high_resolution_clock::now();
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
 			unsigned char* output = memoryForLoadedTerrain.ptr.get();
@@ -420,13 +425,14 @@ namespace CompressedTerrainCache {
 			auto end = std::chrono::high_resolution_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			auto time = (dur.count() / 1000000.0);
-			double dataSize = tileSizeBytes * (double)numTiles;
-			double throughput = dataSize / time;
-			std::cout << "Directly accessing " << numTiles << " tiles through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
+			if (elapsedTime) {
+				*elapsedTime = time;
+			}
 			return memoryForLoadedTerrain.ptr.get();
 		}
 		// Fetches Huffman Tree, encoded linearized tile data and decodes multiple columns in parallel.
-		unsigned char* decodeSelectedTiles(std::vector<uint32_t> tileIndexList) {
+		unsigned char* decodeSelectedTiles(std::vector<uint32_t> tileIndexList, double* elapsedTime = nullptr) {
+			auto start = std::chrono::high_resolution_clock::now();
 			uint32_t numTiles = tileIndexList.size();
 			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
@@ -443,7 +449,6 @@ namespace CompressedTerrainCache {
 			uint32_t h = height;
 			uint32_t tw = tileWidth;
 			uint32_t th = tileHeight;
-			auto start = std::chrono::high_resolution_clock::now();
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
 			unsigned char* output = memoryForLoadedTerrain.ptr.get();
@@ -455,7 +460,9 @@ namespace CompressedTerrainCache {
 			auto time = (dur.count() / 1000000.0);
 			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
-			std::cout << "Accessing "<< numTiles <<" Huffman-encoded tiles through unified memory(RAM->VRAM) + decoding: " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
+			if (elapsedTime) {
+				*elapsedTime = time;
+			}
 			return memoryForLoadedTerrain.ptr.get();
 		}
 		~TileManager() {

@@ -32,7 +32,7 @@ int main()
     int numCpuThreads = 20; // can have up to concurrency limit number of cpu threads.
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
 
-
+    // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
     cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get());
@@ -46,7 +46,8 @@ int main()
 
 
     float angle = 0.0f;
-
+    double timeNormalAccess = 0.0f;
+    double timeDecode = 0.0f;
     unsigned char* loadedTilesOnDevice_d = nullptr;
     constexpr int ACCESS_METHOD_DIRECT = 0;
     constexpr int ACCESS_METHOD_DECODE_HUFFMAN = 1;
@@ -73,8 +74,8 @@ int main()
 
         accessMethod = 1 - accessMethod;
         switch (accessMethod) {
-            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList); break;
-            case ACCESS_METHOD_DECODE_HUFFMAN:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList); break;
+            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess); break;
+            case ACCESS_METHOD_DECODE_HUFFMAN:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode); break;
             default:break;
         }
 
@@ -103,11 +104,18 @@ int main()
             tileIndexInOutput++;
         }
 
-
+        // Rendering benchmark window.
         cv::Mat img2(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
         cv::Mat downScaledImg2;
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
-        cv::imshow("Loaded Tiles", downScaledImg2);
+        std::string directMethod = std::string("Unified memory tile stream = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
+        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding = ") + std::to_string(timeDecode) + std::string(" seconds");
+        cv::Mat benchmark;
+        cv::cvtColor(downScaledImg2, benchmark, cv::COLOR_GRAY2BGR);
+        cv::putText(benchmark, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeMethod, cv::Point(20, 90), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(benchmark, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
+        cv::imshow("Loaded Tiles", benchmark);
         int key = cv::waitKey(1);
         if (key == 27) {
             break;
