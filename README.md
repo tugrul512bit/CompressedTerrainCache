@@ -11,3 +11,8 @@ Currently only decoding on gpu is implemented:
 Todo:
 - 2D direct-mapped tile-cache
 - Cuda-compressible-memory for the direct-mapped-cache
+
+
+Dependencies:
+- main.cu uses OpenCV-4 for visual output during benchmarks and maintained by VCPKG.
+- CUDA C++ compiler with C++17.
