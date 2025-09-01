@@ -7,7 +7,7 @@ namespace CompressedTerrainCache {
 			const unsigned char* encodedTrees,
 			const uint32_t blockAlignedElements,
 			const uint32_t tileSizeBytes,
-			unsigned char* originalTileDataForComparison,
+			const unsigned char* originalTileDataForComparison,
 			const uint32_t numTilesToTest,
 			const uint32_t terrainWidth,
 			const uint32_t terrainHeight,
@@ -407,7 +407,8 @@ namespace CompressedTerrainCache {
 			const uint32_t terrainHeight,
 			const uint32_t tileWidth,
 			const uint32_t tileHeight,
-			const uint32_t* tileIndexList) {
+			const uint32_t* tileIndexList,
+			unsigned char* outputTiles) {
 			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
 			const uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
 			const uint32_t localThreadIndex = threadIdx.x;
@@ -477,23 +478,11 @@ namespace CompressedTerrainCache {
 								decodeBitIndex++;
 							}
 							decodeBitIndex--;
-							const uint32_t tileLocalX = byteIndex % tileWidth;
-							const uint32_t tileLocalY = byteIndex / tileWidth;
-							const uint32_t tileGlobalX = tile % numTilesX;
-							const uint32_t tileGlobalY = tile / numTilesX;
-							const uint64_t globalX = tileGlobalX * (uint64_t)tileWidth + tileLocalX;
-							const uint64_t globalY = tileGlobalY * (uint64_t)tileHeight + tileLocalY;
-							if (globalX < terrainWidth && globalY < terrainHeight) {
-								dummyVar += symbol;
-							}
+							outputTiles[tileIndex * (uint64_t)tileSizeBytes + byteIndex] = symbol;
 						}
 					}
 					__syncthreads();
 				}
-			}
-
-			if (hasComputed && dummyVar == 0) {
-				printf("\nERROR! Decoded data should have at least 1 non-null character. \n");
 			}
 		}
 	}

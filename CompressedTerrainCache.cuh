@@ -32,7 +32,7 @@ namespace CompressedTerrainCache {
 			const unsigned char* encodedTrees,
 			const uint32_t blockAlignedElements,
 			const uint32_t tileSizeBytes,
-			unsigned char* originalTileDataForComparison,
+			const unsigned char* originalTileDataForComparison,
 			const uint32_t numTilesToTest,
 			const uint32_t terrainWidth,
 			const uint32_t terrainHeight,
@@ -102,7 +102,8 @@ namespace CompressedTerrainCache {
 			const uint32_t terrainHeight,
 			const uint32_t tileWidth,
 			const uint32_t tileHeight,
-			const uint32_t* tileIndexList);
+			const uint32_t* tileIndexList,
+			unsigned char* outputTiles);
 	}
 	namespace Helper {
 		struct DeviceMemory {
@@ -293,8 +294,9 @@ namespace CompressedTerrainCache {
 		};
 	}
 	/* 
-	Starts dedicated threads for continuous encoding of many tiles with asynchronous reading from gpu.
-	Uses CUDA unified memory as staging buffer for uploading randomly positioned fine-grained tiles from host to device from much larger storage (RAM).
+	Produces Huffman-Encoded tiles from a 2D terrain. When accessing from device, it checks if 2D direct-mapped-cache contains the tile, then returns it directly if it exists in device memory. 
+	In case of a cache-miss, it transfers encoded tile data and decodes to fill cache slot and use the data.
+	After the data is ready, it passes through the CUDA-compressible-memory to increase chance of hardware cache-hit when accessing dataset larger than L2 cache of gpu.
 	*/
 	template<typename T>
 	struct TileManager {
@@ -555,7 +557,7 @@ namespace CompressedTerrainCache {
 			double throughput = dataSize / time;
 			std::cout << "Accessing " << numTiles << " tiles of raw terrain data through unified memory(RAM->VRAM): " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
 		}
-		void benchmarkForSelectedTilesEncodedAccess(std::vector<uint32_t> tileIndexList) {
+		unsigned char* benchmarkForSelectedTilesEncodedAccess(std::vector<uint32_t> tileIndexList) {
 			uint32_t numTiles = tileIndexList.size();
 			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
 			uint32_t selectionBytes = tileIndexList.size() * sizeof(uint32_t);
@@ -577,7 +579,8 @@ namespace CompressedTerrainCache {
 			auto start = std::chrono::high_resolution_clock::now();
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
-			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList };
+			unsigned char* output = memoryForLoadedTerrain.ptr.get();
+			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList, &output };
 			for (int i = 0; i < 20; i++) {
 				CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 				CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -588,6 +591,7 @@ namespace CompressedTerrainCache {
 			double dataSize = tileSizeBytes * (double)numTiles;
 			double throughput = dataSize / time;
 			std::cout << "Accessing "<< numTiles <<" encoded tiles through unified memory(RAM->VRAM) + decoding: " << time << " seconds per kernel.Throughput = " << throughput / (1024 * 1024 * 1024) << " GB / s " << std::endl;
+			return memoryForLoadedTerrain.ptr.get();
 		}
 		~TileManager() {
 			workers.clear();

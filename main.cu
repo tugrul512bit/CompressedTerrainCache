@@ -1,5 +1,6 @@
 ﻿#include <stdio.h>
 #include <random>
+#include <cmath>
 // Cached encoder tool for 2d terrain.
 #include "CompressedTerrainCache.cuh"
 // OpenCV4 for 2d render.
@@ -13,16 +14,12 @@ int main()
     size_t tileHeight = 128;
     size_t numTerrainElements = terrainWidth * terrainHeight;
     using T = unsigned char;
-    // Generating sample terrain.
+    // Generating sample terrain (2D cos wave pattern).
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
-
     for (size_t y = 0; y < terrainHeight; y++) {
         for (size_t x = 0; x < terrainWidth; x++) {
             size_t index = x + y * terrainWidth;
-            size_t dx = x - terrainWidth;
-            size_t dy = y - terrainHeight;
-            size_t d = sqrt(dx*dx + dy*dy);
-            unsigned char color = (d * 128) / terrainWidth;
+            unsigned char color = 128 + cos(x * 0.01f) * cos(y * 0.01f) * 127;
             terrain.get()[index] = color;
         }
     }
@@ -34,12 +31,12 @@ int main()
 
     // Testing if decoding works.
     tileManager.unitTestForDataIntegrity();
-    cv::namedWindow("2D Render Window (Huffman Encoded Tiles + Caching)");
-    cv::resizeWindow("2D Render Window (Huffman Encoded Tiles + Caching)", 1024, 1024);
-    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get()/*terrain.get()*/);
+    cv::namedWindow("Downscaled Raw Terrain Data");
+    cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
+    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get());
     cv::Mat downScaledImg;
     cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
-    cv::imshow("2D Render Window (Huffman Encoded Tiles + Caching)", downScaledImg);
+    cv::imshow("Downscaled Raw Terrain Data", downScaledImg);
     cv::waitKey(10000);
     // Benchmarking normal direct access for all tiles.
     tileManager.benchmarkNormalAccess();
@@ -71,8 +68,39 @@ int main()
     std::cout << "number of tiles = " << numTiles << std::endl;
     tileIndexList.push_back(numTiles - 1);
     tileManager.benchmarkForSelectedTilesNormalAccess(tileIndexList);
-    tileManager.benchmarkForSelectedTilesEncodedAccess(tileIndexList);
-    
+    unsigned char* loadedTilesOnDevice_d = tileManager.benchmarkForSelectedTilesEncodedAccess(tileIndexList);
+    uint64_t outputBytes = tileIndexList.size() * (size_t)tileWidth * tileHeight * sizeof(T);
+    std::vector<unsigned char> loadedTilesOnHost_h(outputBytes);
+    // Downloading output tile data.
+    CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
+    // Clearing old terrain to see if visibility range works correctly.
+    std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), 0);
+    uint32_t tileIndexInOutput = 0;
+    for (uint32_t tileIndex : tileIndexList) {
+        uint32_t tileX = tileIndex % numTilesX;
+        uint32_t tileY = tileIndex / numTilesX;
+        for (uint32_t y = 0; y < tileHeight; y++) {
+            for (uint32_t x = 0; x < tileWidth; x++) {
+                uint64_t terrainX = (tileX * tileWidth + x);
+                uint64_t terrainY = (tileY * tileHeight + y);
+                uint64_t terrainDestinationIndex = terrainX + terrainY * (uint64_t)terrainWidth;
+                uint64_t sourceIndex = tileIndexInOutput * (uint64_t)tileWidth * tileHeight + x + y * tileWidth;
+                if (terrainX < terrainWidth && terrainY < terrainHeight) {
+                    terrain.get()[terrainDestinationIndex] = loadedTilesOnHost_h[sourceIndex];
+                }
+            }
+        }
+        tileIndexInOutput++;
+    }
+
+    cv::namedWindow("Loaded Tiles");
+    cv::resizeWindow("Loaded Tiles", 1024, 1024);
+    cv::Mat img2(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
+    cv::Mat downScaledImg2;
+    cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
+    cv::imshow("Loaded Tiles", downScaledImg2);
+    cv::waitKey(10000);
+    cv::pollKey();
     cv::destroyAllWindows();
     return 0;
 }
