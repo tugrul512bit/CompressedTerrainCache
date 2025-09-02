@@ -331,8 +331,8 @@ namespace CompressedTerrainCache {
 			numBlocksToLaunch = deviceProperties.multiProcessorCount * numBlocksPerSM;
 
 			// Allocating cache in device memory.
-			numTileCacheSlotsX = 20;
-			numTileCacheSlotsY = 20;
+			numTileCacheSlotsX = 120;
+			numTileCacheSlotsY = 120;
 			// Array of locks for cache slots in device-memory.
 			memoryForTileCacheSlotLock = Helper::DeviceMemory(stream, sizeof(uint32_t) * numTileCacheSlotsX * numTileCacheSlotsY);
 			CUDA_CHECK(cudaMemsetAsync(memoryForTileCacheSlotLock.ptr.get(), 0, memoryForTileCacheSlotLock.numBytes, stream));
