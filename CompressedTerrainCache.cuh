@@ -58,19 +58,6 @@ namespace CompressedTerrainCache {
 			const uint32_t numTileCacheSlotsY,
 			uint32_t* tileCacheDataIndex,
 			unsigned char* cache);
-
-		__global__ void k_decodeSelectedTiles(
-			const unsigned char* encodedTiles,
-			const unsigned char* encodedTrees,
-			const uint32_t blockAlignedElements,
-			const uint32_t tileSizeBytes,
-			const uint32_t numTilesToTest,
-			const uint32_t terrainWidth,
-			const uint32_t terrainHeight,
-			const uint32_t tileWidth,
-			const uint32_t tileHeight,
-			const uint32_t* tileIndexList,
-			unsigned char* outputTiles);
 	}
 	namespace Helper {
 		struct DeviceMemory {
@@ -83,10 +70,17 @@ namespace CompressedTerrainCache {
 				}
 				else {
 					numBytes = sizeBytes;
-					unsigned char* tmp;
-					CUDA_CHECK(cudaMallocAsync(&tmp, sizeBytes, stream));
-					CUDA_CHECK(cudaStreamSynchronize(stream));
-					ptr = std::shared_ptr<unsigned char>(tmp, [stream](unsigned char* ptr) { CUDA_CHECK(cudaFreeAsync(ptr, stream)); CUDA_CHECK(cudaStreamSynchronize(stream)); });
+					if (numBytes > 0) {
+						unsigned char* tmp;
+						CUDA_CHECK(cudaMallocAsync(&tmp, sizeBytes, stream));
+						CUDA_CHECK(cudaStreamSynchronize(stream));
+						ptr = std::shared_ptr<unsigned char>(tmp, [stream, sizeBytes](unsigned char* ptr) { 
+							if (sizeBytes > 0) { 
+								CUDA_CHECK(cudaFreeAsync(ptr, stream));
+								CUDA_CHECK(cudaStreamSynchronize(stream)); 
+							}
+						});
+					}
 				}
 			}
 			~DeviceMemory() {}
@@ -310,7 +304,8 @@ namespace CompressedTerrainCache {
 		allocateExtraTerrainForBenchmarking: true = enables a copy of raw terrain data in unified memory to be compared against encoding method (doubles memory requirement)
 		*/
 		TileManager(T* terrainPtr, uint64_t widthPrm, uint64_t heightPrm, 
-					uint64_t tileWidthPrm, uint64_t tileHeightPrm,					
+					uint64_t tileWidthPrm, uint64_t tileHeightPrm,	
+					uint64_t tileCacheSlotColumns, uint64_t tileCacheSlotRows,
 					int numThreads = std::thread::hardware_concurrency(), 
 					int deviceId = 0, bool allocateExtraTerrainForBenchmarking = true) {
 			tileWidth = tileWidthPrm;
@@ -331,8 +326,8 @@ namespace CompressedTerrainCache {
 			numBlocksToLaunch = deviceProperties.multiProcessorCount * numBlocksPerSM;
 
 			// Allocating cache in device memory.
-			numTileCacheSlotsX = 30;
-			numTileCacheSlotsY = 30;
+			numTileCacheSlotsX = tileCacheSlotColumns;
+			numTileCacheSlotsY = tileCacheSlotRows;
 			// Array of locks for cache slots in device-memory.
 			memoryForTileCacheSlotLock = Helper::DeviceMemory(stream, sizeof(uint32_t) * numTileCacheSlotsX * numTileCacheSlotsY);
 			CUDA_CHECK(cudaMemsetAsync(memoryForTileCacheSlotLock.ptr.get(), 0, memoryForTileCacheSlotLock.numBytes, stream));
@@ -540,7 +535,6 @@ namespace CompressedTerrainCache {
 				&tileCacheSlotLock, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex, &cache
 			};
 			CUDA_CHECK(cudaEventRecord(start, stream));
-			//CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
 			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
 			CUDA_CHECK(cudaEventRecord(stop, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -561,6 +555,9 @@ namespace CompressedTerrainCache {
 		~TileManager() {
 			workers.clear();
 			memoryForLoadedTerrain.~DeviceMemory();
+			memoryForTileCacheSlotLock.~DeviceMemory();
+			memoryForTileCacheDataIndex.~DeviceMemory();
+			memoryForCache.~DeviceMemory();
 			CUDA_CHECK(cudaEventDestroy(start));
 			CUDA_CHECK(cudaEventDestroy(stop));
 			CUDA_CHECK(cudaStreamSynchronize(stream));

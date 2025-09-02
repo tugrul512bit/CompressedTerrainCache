@@ -8,13 +8,20 @@
 
 int main()
 {
-    uint64_t playerVisibilityRadius = 1800; // player can see this far.
-    uint64_t terrainWidth = 25 * 1024;
-    uint64_t terrainHeight = 25 * 1024;
+    // Player can see this far.
+    uint64_t playerVisibilityRadius = 1800;
+    // 2D terrain map size, in units.
+    uint64_t terrainWidth = 35 * 1024;
+    uint64_t terrainHeight = 35 * 1024;
+    // 2D tile size, in units.
     uint64_t tileWidth = 256;
     uint64_t tileHeight = 256;
+    // Tile cache size, in tiles (so that 20x20 cache can store 400 tiles at once)
+    uint64_t tileCacheSlotColumns = 20;
+    uint64_t tileCacheSlotRows = 20;
+    // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
-    uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth; // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX)
+    uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint64_t numTiles = numTilesX * numTilesY;
     using T = unsigned char;
@@ -31,7 +38,7 @@ int main()
     // Creating tile manager that uses terrain as input.
     int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
     int numCpuThreads = 20; // can have up to concurrency limit number of cpu threads.
-    CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, numCpuThreads, deviceIndex);
+    CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows,  numCpuThreads, deviceIndex);
 
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
@@ -59,12 +66,12 @@ int main()
     int accessMethod = 0;
     // Sample game loop.
     while (true) {
+        angle += 0.01f;
         // Creating a sample list of tile-indices using visibility range of player.
         std::vector<uint32_t> tileIndexList;
         for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {
             for (uint64_t tileX = 0; tileX < numTilesX; tileX++) {
                 // Checking if player visibility range collides with the current tile.
-                angle += 0.000005f;
                 uint64_t playerX = terrainWidth / 2 + cos(angle) * terrainWidth / 4;
                 uint64_t playerY = terrainHeight / 2 + sin(angle) * terrainHeight / 4;
                 uint64_t distanceX = playerX - (tileX * tileWidth + tileWidth / 2);
@@ -77,6 +84,7 @@ int main()
         }
 
         accessMethod = 1 - accessMethod;
+
         switch (accessMethod) {
             case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
             case ACCESS_METHOD_DECODE_HUFFMAN:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
