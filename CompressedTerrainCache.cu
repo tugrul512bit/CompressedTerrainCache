@@ -67,7 +67,7 @@ namespace CompressedTerrainCache {
 			const uint32_t* treePtr = reinterpret_cast<const uint32_t*>(encodedTrees);
 			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
-			__shared__ uint32_t s_tree[512];
+			extern __shared__ uint32_t s_tree[];
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {

@@ -8,7 +8,7 @@
 
 int main()
 {
-    uint64_t playerVisibilityRadius = 1500; // player can see this far.
+    uint64_t playerVisibilityRadius = 1800; // player can see this far.
     uint64_t terrainWidth = 15 * 1024;
     uint64_t terrainHeight = 15 * 1024;
     uint64_t tileWidth = 256;
@@ -23,7 +23,7 @@ int main()
     for (uint64_t y = 0; y < terrainHeight; y++) {
         for (uint64_t x = 0; x < terrainWidth; x++) {
             uint64_t index = x + y * terrainWidth;
-            unsigned char color = 77 + cos(x * 0.003f) * cos(y * 0.003f) * 50;
+            unsigned char color = 77 + cos(x * 0.002f) * cos(y * 0.002f) * 50;
             terrain.get()[index] = color;
         }
     }
@@ -49,6 +49,10 @@ int main()
     float angle = 0.0f;
     double timeNormalAccess = 0.0f;
     double timeDecode = 0.0f;
+    double dataSizeNormalAccess = 0.0f;
+    double dataSizeDecode = 0.0f;
+    double throughputNormalAccess = 0.0f;
+    double throughputDecode = 0.0;
     unsigned char* loadedTilesOnDevice_d = nullptr;
     constexpr int ACCESS_METHOD_DIRECT = 0;
     constexpr int ACCESS_METHOD_DECODE_HUFFMAN = 1;
@@ -74,14 +78,14 @@ int main()
 
         accessMethod = 1 - accessMethod;
         switch (accessMethod) {
-            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess); break;
-            case ACCESS_METHOD_DECODE_HUFFMAN:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode); break;
+            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
+            case ACCESS_METHOD_DECODE_HUFFMAN:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
             default:break;
         }
 
         uint64_t outputBytes = tileIndexList.size() * (size_t)tileWidth * tileHeight * sizeof(T);
         std::vector<unsigned char> loadedTilesOnHost_h(outputBytes);
-        // Downloading output tile data.
+        // Downloading output tile data from device memory to RAM.
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
         // Clearing old terrain to see if visibility range works correctly.
         std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), 0);
@@ -108,12 +112,24 @@ int main()
         cv::Mat img2(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
         cv::Mat downScaledImg2;
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
-        std::string directMethod = std::string("Unified memory tile stream = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
-        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding = ") + std::to_string(timeDecode) + std::string(" seconds");
+        std::string directMethod = std::string("Unified memory tile stream:");
+        std::string decodeInfo1 = std::string("Kernel = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
+        std::string decodeInfo2 = std::string("Data = ") + std::to_string(dataSizeNormalAccess) + std::string(" GB");
+        std::string decodeInfo3 = std::string("Throughput = ") + std::to_string(throughputNormalAccess) + std::string(" GB/s");
+        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding:");
+        std::string decodeInfo4 = std::string("Kernel = ") + std::to_string(timeDecode) + std::string(" seconds");
+        std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
+        std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
         cv::Mat benchmark;
         cv::cvtColor(downScaledImg2, benchmark, cv::COLOR_GRAY2BGR);
         cv::putText(benchmark, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeMethod, cv::Point(20, 90), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo3, cv::Point(20, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeMethod, cv::Point(20, 160), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo4, cv::Point(20, 180), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo5, cv::Point(20, 200), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(benchmark, decodeInfo6, cv::Point(20, 220), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
         cv::putText(benchmark, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
         cv::imshow("Loaded Tiles", benchmark);
         int key = cv::waitKey(1);
