@@ -6,11 +6,12 @@
 - Cache-miss streams encoded-data from unified-memory (RAM), then decompresses it within a block.
 - Only a CUDA-kernel does all work without any cudaMemcpy command for tiles.
 
-Currently only decoding on gpu is implemented:
+Currently implemented features:
+- decoding
+- 2d direct-mapped tile-caching on device memory during streaming (backing-store is unified memory, cache hit uses device-memory, cache miss takes data from backing-store, decodes, and updates cache)
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png) 
 Todo:
-- 2D direct-mapped tile-cache
-- Cuda-compressible-memory for the direct-mapped-cache
+- Enable CUDA-compressible-memory for the direct-mapped-cache
 
 
 Dependencies:
