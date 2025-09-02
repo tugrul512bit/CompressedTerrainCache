@@ -11,10 +11,12 @@ Currently implemented features:
 - 2d direct-mapped tile-caching on device memory during streaming (backing-store is unified memory, cache hit uses device-memory, cache miss takes data from backing-store, decodes, and updates cache)
 
 When actively streaming edge tiles of visible range from unified memory and using 2D caching for interior (automatic cache-miss or hit handling):
+
 (PCIE v5.0 x16 lanes, RTX5070)
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png)
 
 When the dataset fully fits inside the cache:
+
 (PCIE v4.0 x4 lanes, RTX4070)
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark_max_potential.png)
 
