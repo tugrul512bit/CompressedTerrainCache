@@ -17,8 +17,8 @@ int main()
     uint64_t tileWidth = 256;
     uint64_t tileHeight = 256;
     // Tile cache size, in tiles (so that 20x20 cache can store 400 tiles at once)
-    uint64_t tileCacheSlotColumns = 20;
-    uint64_t tileCacheSlotRows = 20;
+    uint64_t tileCacheSlotColumns = 25;
+    uint64_t tileCacheSlotRows = 25;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
