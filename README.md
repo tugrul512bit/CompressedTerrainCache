@@ -7,7 +7,7 @@
 - Only a CUDA-kernel does all work without any cudaMemcpy command for tiles.
 
 Currently only decoding on gpu is implemented:
-![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png)
+![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png) 
 Todo:
 - 2D direct-mapped tile-cache
 - Cuda-compressible-memory for the direct-mapped-cache
