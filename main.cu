@@ -116,7 +116,7 @@ int main()
         std::string decodeInfo1 = std::string("Kernel = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
         std::string decodeInfo2 = std::string("Data = ") + std::to_string(dataSizeNormalAccess) + std::string(" GB");
         std::string decodeInfo3 = std::string("Throughput = ") + std::to_string(throughputNormalAccess) + std::string(" GB/s");
-        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding:");
+        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding + 2D caching:");
         std::string decodeInfo4 = std::string("Kernel = ") + std::to_string(timeDecode) + std::string(" seconds");
         std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
         std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
