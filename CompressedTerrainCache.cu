@@ -58,8 +58,10 @@ namespace CompressedTerrainCache {
 				uint32_t exponentialBackoff = 4;
 				while (atomicCAS(&slotLocks[slotIndex], 0, 1) != 0) {
 					__nanosleep(exponentialBackoff);
-					exponentialBackoff = exponentialBackoff << 1;
-				}
+					if (exponentialBackoff < 1024 * 8) {
+						exponentialBackoff = exponentialBackoff << 1;
+					}
+				}atomicExch(&slotLocks[slotIndex], 0); printf("?");
 				__threadfence();
 				// if cache-miss, enable decoding and loading for the data from unified memory.
 				if (tileCacheDataIndex[slotIndex] != tile) {
@@ -81,7 +83,7 @@ namespace CompressedTerrainCache {
 			// Block leader locks the slot and the block waits for the leader.
 			if (localThreadIndex == 0) {
 				__threadfence();
-				atomicExch(&slotLocks[slotIndex], 0);
+				atomicExch(&slotLocks[slotIndex], 0); printf("!");
 			}
 		}
 
@@ -189,9 +191,10 @@ namespace CompressedTerrainCache {
 							cache[sourceOffset + byteIndex] = symbol;
 						}
 					}
-					__syncthreads();
+					d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
 				}
 			}
+			
 		}
 
 

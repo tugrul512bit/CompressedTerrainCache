@@ -270,7 +270,7 @@ namespace CompressedTerrainCache {
 		int deviceIndex;
 		cudaStream_t stream;
 		cudaEvent_t start, stop;
-		// This is for the result or output to be used in a game logic that needs surroundings on a terrain data.
+		// This is for the result or output to be used in a game logic that needs surroundings on a terrain data directly from device-memory.
 		Helper::DeviceMemory memoryForLoadedTerrain;
 		// This is for the encoded tiles to be used in efficient data retrieval from host to device for any unknown pattern in runtime.
 		Helper::UnifiedMemory memoryForEncodedTiles;
@@ -280,7 +280,15 @@ namespace CompressedTerrainCache {
 		Helper::UnifiedMemory memoryForOriginalTerrain;
 		// This is an input for selecting tiles dynamically from host-given array of tile indices (row-major tile order)
 		Helper::UnifiedMemory memoryForCustomBlockSelection;
-
+		// Array of locks for cache slots in device-memory.
+		Helper::DeviceMemory memoryForTileCacheSlotLock;
+		// Size of cache in terms of tiles.
+		uint32_t numTileCacheSlotsX;
+		uint32_t numTileCacheSlotsY;
+		// Array of tile indices for cache slots.
+		Helper::DeviceMemory memoryForTileCacheDataIndex;
+		// Cache data.
+		Helper::DeviceMemory memoryForCache;
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
 		uint64_t tileWidth;
 		uint64_t tileHeight;
@@ -319,8 +327,20 @@ namespace CompressedTerrainCache {
 			cudaDeviceProp deviceProperties;
 			CUDA_CHECK(cudaGetDeviceProperties(&deviceProperties, deviceIndex));
 			int numBlocksPerSM;
-			CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSM, (void*)Kernels::k_decodeSelectedTiles, HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 512 * sizeof(uint32_t)));
+			CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSM, (void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache, HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 512 * sizeof(uint32_t)));
 			numBlocksToLaunch = deviceProperties.multiProcessorCount * numBlocksPerSM;
+
+			// Allocating cache in device memory.
+			numTileCacheSlotsX = 20;
+			numTileCacheSlotsY = 20;
+			// Array of locks for cache slots in device-memory.
+			memoryForTileCacheSlotLock = Helper::DeviceMemory(stream, sizeof(uint32_t) * numTileCacheSlotsX * numTileCacheSlotsY);
+			CUDA_CHECK(cudaMemsetAsync(memoryForTileCacheSlotLock.ptr.get(), 0, memoryForTileCacheSlotLock.numBytes, stream));
+			// Array of tile indices for cache slots.
+			memoryForTileCacheDataIndex = Helper::DeviceMemory(stream, sizeof(uint32_t) * numTileCacheSlotsX * numTileCacheSlotsY);
+			CUDA_CHECK(cudaMemsetAsync(memoryForTileCacheDataIndex.ptr.get(), 255, memoryForTileCacheDataIndex.numBytes, stream));
+			// Cache data.
+			memoryForCache = Helper::DeviceMemory(stream, sizeof(T) * tileWidth * tileHeight * numTileCacheSlotsX * numTileCacheSlotsY);
 			if (!deviceProperties.cooperativeLaunch) {
 				std::cout << "ERROR: cooperative kernel launch is not supported. " << std::endl;
 				exit(0);
@@ -330,7 +350,7 @@ namespace CompressedTerrainCache {
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
 			uint64_t numTiles = numTilesX * numTilesY;
-			
+
 			// Assuming maximum 511 nodes including internal nodes, 1 reserved for node count metadata.
 			memoryForEncodedTrees = Helper::UnifiedMemory(numTiles * sizeof(uint32_t) * 512);
 			if (benchmarkComparisonEnabled) {
@@ -511,11 +531,9 @@ namespace CompressedTerrainCache {
 			//void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output };
 
 
-			uint32_t* tileCacheSlotLock;
-			uint32_t numTileCacheSlotsX;
-			uint32_t numTileCacheSlotsY;
-			uint32_t* tileCacheDataIndex;
-			unsigned char* cache;
+			uint32_t* tileCacheSlotLock = reinterpret_cast<uint32_t*>(memoryForTileCacheSlotLock.ptr.get());
+			uint32_t* tileCacheDataIndex = reinterpret_cast<uint32_t*>(memoryForTileCacheDataIndex.ptr.get());
+			unsigned char* cache = memoryForCache.ptr.get();
 
 			void* args[] = { 
 				&tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output,
