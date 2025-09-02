@@ -37,7 +37,7 @@ namespace CompressedTerrainCache {
 							const uint32_t tileGlobalY = tile / numTilesX;
 							const uint64_t globalX = tileGlobalX * (uint64_t)tileWidth + tileLocalX;
 							const uint64_t globalY = tileGlobalY * (uint64_t)tileHeight + tileLocalY;
-							if (globalX < terrainWidth && globalY < terrainHeight) {
+							if (globalX < terrainWidth && globalY < terrainHeight) { 
 								outputTiles[tileIndex * (uint64_t)tileSizeBytes + byteIndex] = originalTileDataForComparison[globalX + globalY * terrainWidth];
 							}
 						}
