@@ -9,8 +9,8 @@
 int main()
 {
     uint64_t playerVisibilityRadius = 1800; // player can see this far.
-    uint64_t terrainWidth = 15 * 1024;
-    uint64_t terrainHeight = 15 * 1024;
+    uint64_t terrainWidth = 25 * 1024;
+    uint64_t terrainHeight = 25 * 1024;
     uint64_t tileWidth = 256;
     uint64_t tileHeight = 256;
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
@@ -36,7 +36,7 @@ int main()
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
-    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, tileManager.memoryForOriginalTerrain.ptr.get());
+    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
     cv::Mat downScaledImg;
     cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
     cv::imshow("Downscaled Raw Terrain Data", downScaledImg);
