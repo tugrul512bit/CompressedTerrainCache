@@ -20,6 +20,9 @@ When the dataset fully fits inside the cache:
 (PCIE v4.0 x4 lanes, RTX4070)
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark_max_potential.png)
 
+Algorithm:
+![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/Algorithm.drawio.png)
+
 Todo:
 - Enable CUDA-compressible-memory for the direct-mapped-cache
 
