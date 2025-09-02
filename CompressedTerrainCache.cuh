@@ -41,6 +41,24 @@ namespace CompressedTerrainCache {
 			const uint32_t* tileIndexList,
 			unsigned char* outputTiles);
 
+		__global__ void k_decodeSelectedTilesWithDirectMappedCache(
+			const unsigned char* encodedTiles,
+			const unsigned char* encodedTrees,
+			const uint32_t blockAlignedElements,
+			const uint32_t tileSizeBytes,
+			const uint32_t numTilesToTest,
+			const uint32_t terrainWidth,
+			const uint32_t terrainHeight,
+			const uint32_t tileWidth,
+			const uint32_t tileHeight,
+			const uint32_t* tileIndexList,
+			unsigned char* outputTiles,
+			uint32_t* tileCacheSlotLock,
+			const uint32_t numTileCacheSlotsX,
+			const uint32_t numTileCacheSlotsY,
+			uint32_t* tileCacheDataIndex,
+			unsigned char* cache);
+
 		__global__ void k_decodeSelectedTiles(
 			const unsigned char* encodedTiles,
 			const unsigned char* encodedTrees,
@@ -262,8 +280,7 @@ namespace CompressedTerrainCache {
 		Helper::UnifiedMemory memoryForOriginalTerrain;
 		// This is an input for selecting tiles dynamically from host-given array of tile indices (row-major tile order)
 		Helper::UnifiedMemory memoryForCustomBlockSelection;
-		std::shared_ptr<std::mutex> tilesLock;
-		std::shared_ptr<std::vector<HuffmanTileEncoder::Tile<T>>> tiles;
+
 		std::vector<std::shared_ptr<Helper::TileWorker<T>>> workers;
 		uint64_t tileWidth;
 		uint64_t tileHeight;
@@ -308,7 +325,7 @@ namespace CompressedTerrainCache {
 				std::cout << "ERROR: cooperative kernel launch is not supported. " << std::endl;
 				exit(0);
 			}
-			tiles = std::make_shared<std::vector<HuffmanTileEncoder::Tile<T>>>();
+
 
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
@@ -491,9 +508,22 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
 			unsigned char* output = memoryForLoadedTerrain.ptr.get();
-			void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output };
+			//void* args[] = { &tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output };
+
+
+			uint32_t* tileCacheSlotLock;
+			uint32_t numTileCacheSlotsX;
+			uint32_t numTileCacheSlotsY;
+			uint32_t* tileCacheDataIndex;
+			unsigned char* cache;
+
+			void* args[] = { 
+				&tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output,
+				&tileCacheSlotLock, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex, &cache
+			};
 			CUDA_CHECK(cudaEventRecord(start, stream));
-			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
+			//CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTiles, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
+			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
 			CUDA_CHECK(cudaEventRecord(stop, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 			float milliseconds = 0.0f;
