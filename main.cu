@@ -14,11 +14,11 @@ int main()
     uint64_t terrainWidth = 16384;
     uint64_t terrainHeight = 16384;
     // 2D tile size, in units.
-    uint64_t tileWidth = 256;
-    uint64_t tileHeight = 256;
-    // Tile cache size, in tiles (so that 32x32 cache can store 1024 tiles at once)
-    uint64_t tileCacheSlotColumns = 32;
-    uint64_t tileCacheSlotRows = 32;
+    uint64_t tileWidth = 64;
+    uint64_t tileHeight = 64;
+    // Tile cache size, in tiles (so that 64x64 cache can store 4096 tiles at once)
+    uint64_t tileCacheSlotColumns = 64;
+    uint64_t tileCacheSlotRows = 64;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
