@@ -134,6 +134,7 @@ namespace CompressedTerrainCache {
 			const uint32_t numTileCacheSlotsY,
 			uint32_t* tileCacheDataIndex,
 			unsigned char* cache) {
+			constexpr uint32_t numBytesPerElement = sizeof(T);
 			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
 			const uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
 			const uint32_t localThreadIndex = threadIdx.x;
@@ -143,6 +144,7 @@ namespace CompressedTerrainCache {
 			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
 			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
 			extern __shared__ uint32_t s_tree[];
+			__shared__ alignas(sizeof(T)) unsigned char s_coalescingLayer[HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement];
 			__shared__ uint32_t s_broadcast[1];
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
@@ -191,6 +193,7 @@ namespace CompressedTerrainCache {
 					// Decode steps.
 					uint32_t chunkCache = 0;
 					uint32_t chunkCacheIndex = -1;
+
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -217,11 +220,22 @@ namespace CompressedTerrainCache {
 								decodeBitIndex++;
 							}
 							decodeBitIndex--;
-							// Copying to the output.
-							outputTiles[tileIndex * (uint64_t)tileSizeBytes + byteIndex] = symbol;
-							// Updating the cache.
-							cache[sourceOffset + byteIndex] = symbol;
+							s_coalescingLayer[localThreadIndex] = symbol;
 						}
+						else {
+							s_coalescingLayer[localThreadIndex] = 0;
+						}
+						__syncthreads();
+						uint32_t blockByteOffset = byteIndex - localThreadIndex;
+						uint32_t localThreadOffset = localThreadIndex * numBytesPerElement;
+						uint32_t writeIndex = blockByteOffset + localThreadOffset;
+						if (writeIndex < tileSizeBytes) {
+							// Copying to the output.
+							*reinterpret_cast<T*>(&outputTiles[tileIndex * (uint64_t)tileSizeBytes + writeIndex]) = *reinterpret_cast<T*>(&s_coalescingLayer[localThreadOffset]);
+							// Updating the cache.
+							*reinterpret_cast<T*>(&cache[sourceOffset + writeIndex]) = *reinterpret_cast<T*>(&s_coalescingLayer[localThreadOffset]);
+						}
+						__syncthreads();
 					}
 					d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
 				}
