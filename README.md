@@ -12,8 +12,12 @@ Currently implemented features:
 
 When actively streaming edge tiles of visible range from unified memory and using 2D caching for interior (automatic cache-miss or hit handling):
 
-(PCIE v5.0 x16 lanes, RTX5070)
+(1 byte per terrain element, PCIE v5.0 x16 lanes, RTX5070)
 ![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/benchmark.png)
+
+
+(4 bytes per terrain element, PCIE v5.0 x16 lanes, RTX5070)
+![Screenshot](https://github.com/tugrul512bit/CompressedTerrainCache/blob/master/wider-POD-type.png)
 
 When the dataset fully fits inside the cache:
 
