@@ -9,16 +9,17 @@
 int main()
 {
     // Player can see this far.
-    uint64_t playerVisibilityRadius = 1600;
+    uint64_t playerVisibilityRadius = 2000;
+    float playerOrbitAngularVelocity = 0.01f;
     // 2D terrain map size, in units.
-    uint64_t terrainWidth = 10003;
-    uint64_t terrainHeight = 10001;
+    uint64_t terrainWidth = 12001;
+    uint64_t terrainHeight = 12002;
     // 2D tile size, in units. Generally power-of-2 sizes are better.
-    uint64_t tileWidth = 63;
-    uint64_t tileHeight = 65;
-    // Tile cache size, in tiles (so that 64x64 cache can store 4096 tiles at once)
-    uint64_t tileCacheSlotColumns = 64;
-    uint64_t tileCacheSlotRows = 64;
+    uint64_t tileWidth = 64;
+    uint64_t tileHeight = 64;
+    // Tile cache size, in tiles (so that 128x128 cache can store 16384 tiles at once)
+    uint64_t tileCacheSlotColumns = 128;
+    uint64_t tileCacheSlotRows = 128;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
@@ -76,7 +77,7 @@ int main()
     int accessMethod = 0;
     // Sample game loop.
     while (true) {
-        angle += 0.01f;
+        angle += playerOrbitAngularVelocity;
         // Creating a sample list of tile-indices using visibility range of player.
         std::vector<uint32_t> tileIndexList;
         for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {

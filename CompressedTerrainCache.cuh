@@ -83,7 +83,7 @@ namespace CompressedTerrainCache {
 			bool cacheHit = false;
 			// Block leader locks the slot and the block waits for the leader.
 			if (localThreadIndex == 0) {
-				uint32_t exponentialBackoff = 4;
+				uint32_t exponentialBackoff = 1;
 				while (atomicCAS(&slotLocks[slotIndex], 0, 1) != 0) {
 					__nanosleep(exponentialBackoff);
 					if (exponentialBackoff < 1024 * 8) {
@@ -507,6 +507,7 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaStreamCreate(&stream));
 			CUDA_CHECK(cudaEventCreate(&start));
 			CUDA_CHECK(cudaEventCreate(&stop));
+
 			cudaDeviceProp deviceProperties;
 			CUDA_CHECK(cudaGetDeviceProperties(&deviceProperties, deviceIndex));
 			int numBlocksPerSM;
