@@ -4,6 +4,8 @@
 It's an efficient terrain-streaming tool that runs only 1 CUDA kernel (no copy) to return the required parts of terrain when the terrain doesn't fit graphics card memory (VRAM). For example, when a player moves through 10 GB terrain, the graphics card uses only 1-2 GB of VRAM allocated. It balances allocation size with performance. Some cards don't have enough VRAM, and some cards have too slow PCIE bandwidth. Both of these disadvantages are balanced with CompressedTerrainCache.
 
 # How does it work?
+User adds a query with a list of tile indices to be fetched. Then it runs a kernel and the output with tiles (in the same order of the indices given) is returned (inside device-memory so the user can continue working on GPU without a copy).
+
 - Takes a 2D terrain of POD type elements and linearizes each tile of it for faster access later.
 - Encodes each tile independently using CPU cores during initialization.
 - When kernel is run, it checks if the required list of tile indices are already cached inside the device memory (that is fast), and serves from there.
