@@ -3,6 +3,19 @@
 # What is this tool?
 It's an efficient terrain-streaming tool that runs only 1 CUDA kernel (no copy) to return the required parts of terrain when the terrain doesn't fit graphics card memory (VRAM). For example, when a player moves through 10 GB terrain, the graphics card uses only 1-2 GB of VRAM allocated. It balances allocation size with performance. Some cards don't have enough VRAM, and some cards have too slow PCIE bandwidth. Both of these disadvantages are balanced with CompressedTerrainCache.
 
+```C++
+uint32_t terrain[1000 * 1000];
+// Creates tiles (3x3 sized) and tile cache (2x2 = for 4 tiles maximum) from the initial terrain state as a faster read-only source of terrain lookup.
+TileManager tileManager(terrain, 1000, 1000, 3, 3, 2, 2);
+
+// devicePointer_d points to VRAM with data of tile 1, tile 2, tile 3 (these are zero-based), each with its own linear-indexing for its terrain elements.
+auto devicePointer_d = tileManager.decodeSelectedTiles({1, 2, 3}, &timeDecode, &dataSizeDecode, &throughputDecode)
+
+// use devicePointer_d on any gpgpu algorithm without extra copying.
+yourAlgorithmOnGpu(devicePointer_d, result);
+
+```
+
 # How does it work?
 User adds a query with a list of tile indices to be fetched. Then it runs a kernel and the output with tiles (in the same order of the indices given, with fully linear indexing) is returned (inside device-memory so the user can continue working on GPU without a copy).
 
