@@ -76,7 +76,7 @@ namespace CompressedTerrainCache {
 
 		__device__ __forceinline__ bool d_acquireDirectMappedCacheSlot(uint32_t tile, uint32_t numTilesX, uint32_t numTilesY, uint32_t numSlotsX, uint32_t numSlotsY, uint32_t* slotLocks, uint32_t* tileCacheDataIndex, uint32_t localThreadIndex, uint32_t* broadcast, uint32_t& cacheSlotIndexOut) {
 			const uint32_t tileX = tile % numTilesX;
-			const uint32_t tileY = tile / numTilesY;
+			const uint32_t tileY = tile / numTilesX;
 			uint32_t slotIndexX = tileX % numSlotsX;
 			uint32_t slotIndexY = tileY % numSlotsY;
 			uint32_t slotIndex = slotIndexX + slotIndexY * numSlotsX;
@@ -178,7 +178,7 @@ namespace CompressedTerrainCache {
 					// Cache-miss step 1: streams data from RAM, decodes the data and writes to device memory output
 					// Cache-miss step 2: copy the decoded data to the cache slot.
 					uint32_t decodeBitIndex = 0;
-					const uint32_t one = 1;
+					constexpr uint32_t one = 1;
 					const uint32_t* chunkBlockPtr = &tilePtr[blockAlignedElements * (uint64_t)tile];
 					const uint32_t* treeBlockPtr = &treePtr[512 * tile];
 					// Loading tree into smem.
