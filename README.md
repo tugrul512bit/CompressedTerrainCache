@@ -17,7 +17,6 @@ User adds a query with a list of tile indices to be fetched. Then it runs a kern
 - Todo: As a last layer of compression, CUDA-compressible-memory is applied to the output.
 - Todo: Uses curve-fitting (of player positions in time) to predict player movement on the 2D terrain and starts prefetching the required future tiles while distributing the streaming latency on multiple frames as a low-latency solution.
 - Todo: Dynamic parallelism + variable-sized tiles are employed to optimize for unbalanced workloads (such as some tiles doing more decoding with more threads)
-- Todo: Aggregated decoding + vectorized device-memory access per thread.
 - Todo: Offload more of calculations to the shared-memory lookup-tables.
 - Todo: Auto-select the best block-size that maximizes number of resident threads per SM (to increase occupancy).
 
