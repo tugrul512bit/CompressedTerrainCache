@@ -9,14 +9,10 @@ It's an efficient terrain-streaming tool that only runs 1 CUDA kernel to return 
 - Only the encoded data goes through PCIE, effective PCIE bandwidth increases.
 - When data is found inside cache, effective bandwidth increases again.
 - Huffman encoding is used for all bytes of each tile (its always byte-granularity regardless of POD type of terrain)
-- 2D Direct-mapped caching is implemented to optimize for increased cache-hit ratio for spatial-locality of player movements on terrain.
+- 2D Direct-mapped cache is implemented to optimize for increased cache-hit ratio for spatial-locality of player movements on the 2D terrain.
 - Todo: As a last layer of compression, CUDA-compressible-memory is applied to the output.
 - Todo: Uses curve-fitting (of player positions in time) to predict player movement on the 2D terrain and starts prefetching the required future tiles while distributing the streaming latency on multiple frames as a low-latency solution.
 - Todo: Dynamic parallelism + variable-sized tiles are employed to optimize for unbalanced workloads (such as some tiles doing more decoding with more threads)
-
-Currently implemented features:
-- Huffman decoding for tiles independently in gpu, 1 tile per CUDA block.
-- 2d direct-mapped tile-caching on device memory during streaming (backing-store is unified memory, cache hit uses device-memory, cache miss takes data from backing-store, decodes, and updates cache)
 
 When actively streaming edge tiles of visible range from unified memory and using 2D caching for interior (automatic cache-miss or hit handling):
 
