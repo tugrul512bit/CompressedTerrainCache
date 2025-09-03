@@ -6,7 +6,7 @@
 #include<queue>
 namespace HuffmanTileEncoder {
     // This is used for shape of encoded data.
-	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 512;
+	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 768;
 	
 	// For defining area of tile by two corners (top-left, bottom-right)
 	struct Rectangle {

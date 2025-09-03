@@ -108,6 +108,7 @@ int main()
         // Clearing old terrain to see if visibility range works correctly.
         std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), sizeof(T) == 1 ? 255 : 0);
         uint32_t tileIndexInOutput = 0;
+
         for (uint32_t tileIndex : tileIndexList) {
             uint32_t tileX = tileIndex % numTilesX;
             uint32_t tileY = tileIndex / numTilesX;

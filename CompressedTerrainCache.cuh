@@ -153,7 +153,9 @@ namespace CompressedTerrainCache {
 				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
 				if (tileIndex < numTilesToTest) {
 					const uint32_t tile = tileIndexList[tileIndex];
-
+					if (tileIndex + numBlocks < numTilesToTest) {
+						asm("prefetch.global.L1 [%0];"::"l"(&tileIndexList[tileIndex + numBlocks]));
+					}
 					// Acquiring cache slot and computing cache-hit or cache-miss.
 					uint32_t cacheSlotIndexOut = 0;
 					bool cacheHit = d_acquireDirectMappedCacheSlot(tile, numTilesX, numTilesY, numTileCacheSlotsX, numTileCacheSlotsY, tileCacheSlotLock, tileCacheDataIndex, localThreadIndex, &s_broadcast[0], cacheSlotIndexOut);
@@ -161,12 +163,12 @@ namespace CompressedTerrainCache {
 
 					// Cache-hit (uses VRAM cache as source)
 					if (cacheHit) {
-
 						const uint64_t destinationOffset = tileIndex * (uint64_t)tileSizeBytes;
-						for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
-							const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
-							if (byteIndex < tileSizeBytes) {
-								outputTiles[destinationOffset + byteIndex] = cache[sourceOffset + byteIndex];
+						const uint32_t numCopySteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement - 1) / (HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement);
+						for (uint32_t copyStep = 0; copyStep < numCopySteps; copyStep++) {
+							const uint32_t tIndex = copyStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement + localThreadIndex * numBytesPerElement;
+							if (tIndex < tileSizeBytes) {
+								*reinterpret_cast<T*>(&outputTiles[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache[sourceOffset + tIndex]);
 							}
 						}
 						d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
@@ -209,8 +211,10 @@ namespace CompressedTerrainCache {
 								if (chunkCacheIndex != chunkLoadIndex) {
 									chunkCache = chunkBlockPtr[chunkLoadIndex];
 									chunkCacheIndex = chunkLoadIndex;
+									if (chunkLoadIndex + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK < blockAlignedElements) {
+										asm("prefetch.global.L1 [%0];"::"l"(&chunkBlockPtr[chunkLoadIndex + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK]));
+									}
 								}
-
 								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
 								const uint32_t node = s_tree[1 + currentNodeIndex];
 								leafNodeFound = (node >> 8) & 0b11111111;
@@ -230,10 +234,11 @@ namespace CompressedTerrainCache {
 						uint32_t localThreadOffset = localThreadIndex * numBytesPerElement;
 						uint32_t writeIndex = blockByteOffset + localThreadOffset;
 						if (writeIndex < tileSizeBytes) {
+							const T obj = *reinterpret_cast<T*>(&s_coalescingLayer[localThreadOffset]);
 							// Copying to the output.
-							*reinterpret_cast<T*>(&outputTiles[tileIndex * (uint64_t)tileSizeBytes + writeIndex]) = *reinterpret_cast<T*>(&s_coalescingLayer[localThreadOffset]);
+							*reinterpret_cast<T*>(&outputTiles[tileIndex * (uint64_t)tileSizeBytes + writeIndex]) = obj;
 							// Updating the cache.
-							*reinterpret_cast<T*>(&cache[sourceOffset + writeIndex]) = *reinterpret_cast<T*>(&s_coalescingLayer[localThreadOffset]);
+							*reinterpret_cast<T*>(&cache[sourceOffset + writeIndex]) = obj;
 						}
 						__syncthreads();
 					}
