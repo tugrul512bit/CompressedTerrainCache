@@ -17,6 +17,7 @@ It's an efficient terrain-streaming tool that runs only 1 CUDA kernel (no copy) 
 - Todo: Dynamic parallelism + variable-sized tiles are employed to optimize for unbalanced workloads (such as some tiles doing more decoding with more threads)
 - Todo: Aggregated decoding + vectorized device-memory access per thread.
 - Todo: Offload more of calculations to the shared-memory lookup-tables.
+- Todo: Auto-select the best block-size that maximizes number of resident threads per SM (to increase occupancy).
 
 When actively streaming edge tiles of visible range from unified memory and using 2D caching for interior tiles:
 
