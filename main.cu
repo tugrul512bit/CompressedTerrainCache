@@ -9,30 +9,36 @@
 int main()
 {
     // Player can see this far.
-    uint64_t playerVisibilityRadius = 2500;
+    uint64_t playerVisibilityRadius = 1600;
     // 2D terrain map size, in units.
-    uint64_t terrainWidth = 15 * 1024;
-    uint64_t terrainHeight = 15 * 1024;
+    uint64_t terrainWidth = 16384;
+    uint64_t terrainHeight = 16384;
     // 2D tile size, in units.
     uint64_t tileWidth = 256;
     uint64_t tileHeight = 256;
-    // Tile cache size, in tiles (so that 20x20 cache can store 400 tiles at once)
-    uint64_t tileCacheSlotColumns = 25;
-    uint64_t tileCacheSlotRows = 25;
+    // Tile cache size, in tiles (so that 32x32 cache can store 1024 tiles at once)
+    uint64_t tileCacheSlotColumns = 32;
+    uint64_t tileCacheSlotRows = 32;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint64_t numTiles = numTilesX * numTilesY;
+
+    // Terrain element type (Has to be POD type)
     //using T = unsigned char;
     using T = uint32_t;
+
     // Generating sample terrain (2D cos wave pattern).
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
     for (uint64_t y = 0; y < terrainHeight; y++) {
         for (uint64_t x = 0; x < terrainWidth; x++) {
             uint64_t index = x + y * terrainWidth;
-            unsigned char color = 77 + cos(x * 0.002f) * cos(y * 0.002f) * 50;
-            terrain.get()[index] = color;
+            unsigned char blue = 77 + cos(x * 0.002f) * cos(y * 0.002f) * 50;
+            unsigned char green = 37 + cos(x * 0.0005f) * cos(y * 0.0005f) * 20;
+            unsigned char red = 130 + cos(x * 0.0004f) * cos(y * 0.0004f) * 100;
+            unsigned char alpha = 255;
+            terrain.get()[index] = ((sizeof(T) == 4) ? (blue | (green << 8) | (red << 16) | (alpha << 24)) : blue);
         }
     }
 
@@ -44,7 +50,7 @@ int main()
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
-    cv::Mat img(terrainHeight, terrainWidth, CV_8UC4, terrain.get());
+    cv::Mat img(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : CV_8UC1, terrain.get());
     cv::Mat downScaledImg;
     cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
     cv::imshow("Downscaled Raw Terrain Data", downScaledImg);
@@ -97,7 +103,7 @@ int main()
         // Downloading output tile data from device memory to RAM.
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
         // Clearing old terrain to see if visibility range works correctly.
-        std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), 0);
+        std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), sizeof(T) == 1 ? 255 : 0);
         uint32_t numErrors = 0;
         uint32_t tileIndexInOutput = 0;
         for (uint32_t tileIndex : tileIndexList) {
@@ -118,7 +124,7 @@ int main()
         }
 
         // Rendering benchmark window.
-        cv::Mat img2(terrainHeight, terrainWidth, CV_8UC4, terrain.get());
+        cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : CV_8UC1, terrain.get());
         cv::Mat downScaledImg2;
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
         std::string directMethod = std::string("Unified memory tile stream:");
@@ -130,7 +136,7 @@ int main()
         std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
         std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
         cv::Mat benchmark;
-        
+
         cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
         cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
         cv::putText(downScaledImg2, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
