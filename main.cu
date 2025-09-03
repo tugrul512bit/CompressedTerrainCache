@@ -9,10 +9,10 @@
 int main()
 {
     // Player can see this far.
-    uint64_t playerVisibilityRadius = 1800;
+    uint64_t playerVisibilityRadius = 2500;
     // 2D terrain map size, in units.
-    uint64_t terrainWidth = 35 * 1024;
-    uint64_t terrainHeight = 35 * 1024;
+    uint64_t terrainWidth = 15 * 1024;
+    uint64_t terrainHeight = 15 * 1024;
     // 2D tile size, in units.
     uint64_t tileWidth = 256;
     uint64_t tileHeight = 256;
@@ -24,7 +24,8 @@ int main()
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint64_t numTiles = numTilesX * numTilesY;
-    using T = unsigned char;
+    //using T = unsigned char;
+    using T = uint32_t;
     // Generating sample terrain (2D cos wave pattern).
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
     for (uint64_t y = 0; y < terrainHeight; y++) {
@@ -43,7 +44,7 @@ int main()
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
-    cv::Mat img(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
+    cv::Mat img(terrainHeight, terrainWidth, CV_8UC4, terrain.get());
     cv::Mat downScaledImg;
     cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
     cv::imshow("Downscaled Raw Terrain Data", downScaledImg);
@@ -92,7 +93,7 @@ int main()
         }
 
         uint64_t outputBytes = tileIndexList.size() * (size_t)tileWidth * tileHeight * sizeof(T);
-        std::vector<unsigned char> loadedTilesOnHost_h(outputBytes);
+        std::vector<T> loadedTilesOnHost_h(tileIndexList.size() * (size_t)tileWidth * tileHeight);
         // Downloading output tile data from device memory to RAM.
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
         // Clearing old terrain to see if visibility range works correctly.
@@ -117,7 +118,7 @@ int main()
         }
 
         // Rendering benchmark window.
-        cv::Mat img2(terrainHeight, terrainWidth, CV_8UC1, terrain.get());
+        cv::Mat img2(terrainHeight, terrainWidth, CV_8UC4, terrain.get());
         cv::Mat downScaledImg2;
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
         std::string directMethod = std::string("Unified memory tile stream:");
@@ -129,17 +130,17 @@ int main()
         std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
         std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
         cv::Mat benchmark;
-        cv::cvtColor(downScaledImg2, benchmark, cv::COLOR_GRAY2BGR);
-        cv::putText(benchmark, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo3, cv::Point(20, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeMethod, cv::Point(20, 160), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo4, cv::Point(20, 180), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo5, cv::Point(20, 200), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
-        cv::putText(benchmark, decodeInfo6, cv::Point(20, 220), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
-        cv::putText(benchmark, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
-        cv::imshow("Loaded Tiles", benchmark);
+        
+        cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo3, cv::Point(20, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeMethod, cv::Point(20, 160), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo4, cv::Point(20, 180), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo5, cv::Point(20, 200), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, decodeInfo6, cv::Point(20, 220), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+        cv::putText(downScaledImg2, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);
+        cv::imshow("Loaded Tiles", downScaledImg2);
         int key = cv::waitKey(1);
         if (key == 27) {
             break;

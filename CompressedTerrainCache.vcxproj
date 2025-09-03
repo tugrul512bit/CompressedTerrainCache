@@ -95,7 +95,7 @@
       <CodeGeneration>compute_89,sm_89;compute_120,sm_120;</CodeGeneration>
       <Optimization>O3</Optimization>
       <RuntimeChecks>Default</RuntimeChecks>
-      <AdditionalOptions>-O3 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-O3  -Xcompiler "/arch:AVX2" %(AdditionalOptions)</AdditionalOptions>
       <GPUDebugInfo>false</GPUDebugInfo>
       <GenerateLineInfo>false</GenerateLineInfo>
     </CudaCompile>
