@@ -28,16 +28,15 @@
 namespace CompressedTerrainCache {
 	namespace Kernels {
 		template<typename T>
-		__global__ void k_accessSelectedTiles(
-			const uint32_t tileSizeBytes,
-			const unsigned char* originalTileDataForComparison_u,
-			const uint32_t numTilesToTest,
-			const uint32_t terrainWidth,
-			const uint32_t terrainHeight,
-			const uint32_t tileWidth,
-			const uint32_t tileHeight,
-			const uint32_t* tileIndexList,
-			unsigned char* outputTiles) {
+		__global__ void k_accessSelectedTiles(	const uint32_t tileSizeBytes,
+												const unsigned char* originalTileDataForComparison_u,
+												const uint32_t numTilesToTest,
+												const uint32_t terrainWidth,
+												const uint32_t terrainHeight,
+												const uint32_t tileWidth,
+												const uint32_t tileHeight,
+												const uint32_t* tileIndexList_u,
+												unsigned char* outputTiles_d) {
 			constexpr uint32_t numBytesPerElement = sizeof(T);
 			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
 			const uint32_t localThreadIndex = threadIdx.x;
@@ -47,7 +46,7 @@ namespace CompressedTerrainCache {
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
 				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
 				if (tileIndex < numTilesToTest) {
-					const uint32_t tile = tileIndexList[tileIndex];
+					const uint32_t tile = tileIndexList_u[tileIndex];
 					const uint32_t numAccessSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
 					// Decode steps.
 					uint32_t chunkCache = 0;
@@ -62,7 +61,7 @@ namespace CompressedTerrainCache {
 							const uint64_t globalX = tileGlobalX * (uint64_t)tileWidth + tileLocalX;
 							const uint64_t globalY = tileGlobalY * (uint64_t)tileHeight + tileLocalY;
 							if (globalX < terrainWidth && globalY < terrainHeight) {
-								outputTiles[tileIndex * (uint64_t)tileSizeBytes + byteIndex] = originalTileDataForComparison_u[globalX * numBytesPerElement + globalY * terrainWidth * numBytesPerElement + (byteIndex % numBytesPerElement)];
+								outputTiles_d[tileIndex * (uint64_t)tileSizeBytes + byteIndex] = originalTileDataForComparison_u[globalX * numBytesPerElement + globalY * terrainWidth * numBytesPerElement + (byteIndex % numBytesPerElement)];
 							}
 						}
 					}
@@ -127,7 +126,7 @@ namespace CompressedTerrainCache {
 																	const uint32_t numTileCacheSlotsX,
 																	const uint32_t numTileCacheSlotsY,
 																	uint32_t* tileCacheDataIndex_d,
-																	unsigned char* cache) {
+																	unsigned char* cache_d) {
 			constexpr uint32_t numBytesPerElement = sizeof(T);
 			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
 			const uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
@@ -159,7 +158,7 @@ namespace CompressedTerrainCache {
 						for (uint32_t copyStep = 0; copyStep < numCopySteps; copyStep++) {
 							const uint32_t tIndex = copyStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement + localThreadIndex * numBytesPerElement;
 							if (tIndex < tileSizeBytes) {
-								*reinterpret_cast<T*>(&outputTiles_d[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache[cacheSlotOffset + tIndex]);
+								*reinterpret_cast<T*>(&outputTiles_d[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache_d[cacheSlotOffset + tIndex]);
 							}
 						}
 						d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock_d, localThreadIndex);
@@ -180,12 +179,10 @@ namespace CompressedTerrainCache {
 							s_tree[node] = treeBlockPtr_u[1 + node];
 						}
 					}
-					// Each block is computed by whole block, so this is inside a branch that is taken by whole block.
 					__syncthreads();
 					// Decode steps.
 					uint32_t chunkCache = 0;
 					uint32_t chunkCacheIndex = -1;
-
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
 						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
@@ -228,7 +225,7 @@ namespace CompressedTerrainCache {
 							// Copying to the output.
 							*reinterpret_cast<T*>(&outputTiles_d[tileIndex * (uint64_t)tileSizeBytes + writeIndex]) = obj;
 							// Updating the cache.
-							*reinterpret_cast<T*>(&cache[cacheSlotOffset + writeIndex]) = obj;
+							*reinterpret_cast<T*>(&cache_d[cacheSlotOffset + writeIndex]) = obj;
 						}
 						__syncthreads();
 					}
@@ -659,8 +656,8 @@ namespace CompressedTerrainCache {
 			uint32_t th = tileHeight;
 			CUDA_CHECK(cudaMemcpyAsync(memoryForCustomBlockSelection.ptr.get(), tileIndexList.data(), selectionBytes, cudaMemcpyHostToDevice, stream));
 			uint32_t* tileList_u = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
-			unsigned char* output = memoryForLoadedTerrain.ptr.get();
-			void* args[] = { &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList_u, &output };
+			unsigned char* output_d = memoryForLoadedTerrain.ptr.get();
+			void* args[] = { &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList_u, &output_d };
 			CUDA_CHECK(cudaEventRecord(start, stream));
 			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessSelectedTiles<T>, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
 			CUDA_CHECK(cudaEventRecord(stop, stream));
@@ -703,11 +700,11 @@ namespace CompressedTerrainCache {
 			
 			uint32_t* tileCacheSlotLock_d = reinterpret_cast<uint32_t*>(memoryForTileCacheSlotLock.ptr.get());
 			uint32_t* tileCacheDataIndex_d = reinterpret_cast<uint32_t*>(memoryForTileCacheDataIndex.ptr.get());
-			unsigned char* cache = memoryForCache.ptr.get();
+			unsigned char* cache_d = memoryForCache.ptr.get();
 
 			void* args[] = { 
 				&tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, & tileList_u, &output,
-				&tileCacheSlotLock_d, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex_d, &cache
+				&tileCacheSlotLock_d, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex_d, &cache_d
 			};
 			CUDA_CHECK(cudaEventRecord(start, stream));
 			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
