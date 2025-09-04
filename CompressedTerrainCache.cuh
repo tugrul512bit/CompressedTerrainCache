@@ -127,10 +127,10 @@ namespace CompressedTerrainCache {
 			const uint32_t tileHeight,
 			const uint32_t* tileIndexList,
 			unsigned char* outputTiles,
-			uint32_t* tileCacheSlotLock,
+			uint32_t* tileCacheSlotLock_d,
 			const uint32_t numTileCacheSlotsX,
 			const uint32_t numTileCacheSlotsY,
-			uint32_t* tileCacheDataIndex,
+			uint32_t* tileCacheDataIndex_d,
 			unsigned char* cache) {
 			constexpr uint32_t numBytesPerElement = sizeof(T);
 			const uint32_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
@@ -154,8 +154,8 @@ namespace CompressedTerrainCache {
 					}
 					// Acquiring cache slot and computing cache-hit or cache-miss.
 					uint32_t cacheSlotIndexOut = 0;
-					bool cacheHit = d_acquireDirectMappedCacheSlot(tile, numTilesX, numTilesY, numTileCacheSlotsX, numTileCacheSlotsY, tileCacheSlotLock, tileCacheDataIndex, localThreadIndex, &s_broadcast[0], cacheSlotIndexOut);
-					const uint64_t sourceOffset = cacheSlotIndexOut * (uint64_t)tileSizeBytes;
+					bool cacheHit = d_acquireDirectMappedCacheSlot(tile, numTilesX, numTilesY, numTileCacheSlotsX, numTileCacheSlotsY, tileCacheSlotLock_d, tileCacheDataIndex_d, localThreadIndex, &s_broadcast[0], cacheSlotIndexOut);
+					const uint64_t cacheSlotOffset = cacheSlotIndexOut * (uint64_t)tileSizeBytes;
 					// Cache-hit (uses VRAM cache as source)
 					if (cacheHit) {
 						const uint64_t destinationOffset = tileIndex * (uint64_t)tileSizeBytes;
@@ -163,10 +163,10 @@ namespace CompressedTerrainCache {
 						for (uint32_t copyStep = 0; copyStep < numCopySteps; copyStep++) {
 							const uint32_t tIndex = copyStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement + localThreadIndex * numBytesPerElement;
 							if (tIndex < tileSizeBytes) {
-								*reinterpret_cast<T*>(&outputTiles[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache[sourceOffset + tIndex]);
+								*reinterpret_cast<T*>(&outputTiles[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache[cacheSlotOffset + tIndex]);
 							}
 						}
-						d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
+						d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock_d, localThreadIndex);
 						continue;
 					}
 					// Cache-miss step 1: streams data from RAM, decodes the data and writes to device memory output
@@ -232,11 +232,11 @@ namespace CompressedTerrainCache {
 							// Copying to the output.
 							*reinterpret_cast<T*>(&outputTiles[tileIndex * (uint64_t)tileSizeBytes + writeIndex]) = obj;
 							// Updating the cache.
-							*reinterpret_cast<T*>(&cache[sourceOffset + writeIndex]) = obj;
+							*reinterpret_cast<T*>(&cache[cacheSlotOffset + writeIndex]) = obj;
 						}
 						__syncthreads();
 					}
-					d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
+					d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock_d, localThreadIndex);
 				}
 			}
 		}
@@ -707,13 +707,13 @@ namespace CompressedTerrainCache {
 			uint32_t* tileList = reinterpret_cast<uint32_t*>(memoryForCustomBlockSelection.ptr.get());
 			unsigned char* output = memoryForLoadedTerrain.ptr.get();
 			
-			uint32_t* tileCacheSlotLock = reinterpret_cast<uint32_t*>(memoryForTileCacheSlotLock.ptr.get());
-			uint32_t* tileCacheDataIndex = reinterpret_cast<uint32_t*>(memoryForTileCacheDataIndex.ptr.get());
+			uint32_t* tileCacheSlotLock_d = reinterpret_cast<uint32_t*>(memoryForTileCacheSlotLock.ptr.get());
+			uint32_t* tileCacheDataIndex_d = reinterpret_cast<uint32_t*>(memoryForTileCacheDataIndex.ptr.get());
 			unsigned char* cache = memoryForCache.ptr.get();
 
 			void* args[] = { 
 				&tilePtr, &treePtr, &blockAligned32BitElements, &tileSizeBytes, &numTiles, &w, &h, &tw, &th, &tileList, &output,
-				&tileCacheSlotLock, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex, &cache
+				&tileCacheSlotLock_d, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex_d, &cache
 			};
 			CUDA_CHECK(cudaEventRecord(start, stream));
 			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, sizeof(uint32_t) * 512, stream));
