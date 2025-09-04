@@ -92,13 +92,18 @@
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
-      <CodeGeneration>compute_89,sm_89;compute_120,sm_120;</CodeGeneration>
+      <CodeGeneration>compute_70,compute_70;compute_75,compute_75;compute_80,compute_80;compute_86,compute_86;compute_89,compute_89;compute_120,compute_120</CodeGeneration>
       <Optimization>O3</Optimization>
       <RuntimeChecks>Default</RuntimeChecks>
       <AdditionalOptions>-O3  -Xcompiler "/arch:AVX2" %(AdditionalOptions)</AdditionalOptions>
       <GPUDebugInfo>false</GPUDebugInfo>
       <GenerateLineInfo>false</GenerateLineInfo>
     </CudaCompile>
+    <CudaLink>
+      <Optimization>O3</Optimization>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
+    </CudaLink>
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="main.cu" />

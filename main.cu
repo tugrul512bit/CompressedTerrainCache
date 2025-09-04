@@ -8,18 +8,18 @@
 
 int main()
 {
-    // Player can see this far.
-    uint64_t playerVisibilityRadius = 2000;
-    float playerOrbitAngularVelocity = 0.01f;
-    // 2D terrain map size, in units.
+    // Player can see this far (in units).
+    uint64_t playerVisibilityRadius = 1400;
+    float playerOrbitAngularVelocity = 0.005f;
+    // 2D terrain map size (in units).
     uint64_t terrainWidth = 12001;
     uint64_t terrainHeight = 12002;
-    // 2D tile size, in units. Generally power-of-2 sizes are better.
+    // 2D tile size (in units). tileWidth * tileHeight = (multiple of HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) is preferred for performing better.
     uint64_t tileWidth = 64;
     uint64_t tileHeight = 64;
-    // Tile cache size, in tiles (so that 128x128 cache can store 16384 tiles at once)
-    uint64_t tileCacheSlotColumns = 128;
-    uint64_t tileCacheSlotRows = 128;
+    // Tile cache size, in tiles (so that 40x40 cache can store 1600 tiles at once)
+    uint64_t tileCacheSlotColumns = 70;
+    uint64_t tileCacheSlotRows = 70;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
@@ -48,9 +48,9 @@ int main()
 
     // Creating tile manager that uses terrain as input.
     int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
-    int numCpuThreads = 20; // can have up to concurrency limit number of cpu threads.
+    int numCpuThreads = std::thread::hardware_concurrency();
     CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows,  numCpuThreads, deviceIndex);
-
+    
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data");
     cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
@@ -108,9 +108,10 @@ int main()
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
         // Clearing old terrain to see if visibility range works correctly.
         std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), sizeof(T) == 1 ? 255 : 0);
-        uint32_t tileIndexInOutput = 0;
-
-        for (uint32_t tileIndex : tileIndexList) {
+        uint32_t num = tileIndexList.size();
+        #pragma omp parallel for
+        for (uint32_t i = 0; i < num; i++) {
+            uint32_t tileIndex = tileIndexList[i];
             uint32_t tileX = tileIndex % numTilesX;
             uint32_t tileY = tileIndex / numTilesX;
             for (uint32_t y = 0; y < tileHeight; y++) {
@@ -118,13 +119,12 @@ int main()
                     uint64_t terrainX = (tileX * tileWidth + x);
                     uint64_t terrainY = (tileY * tileHeight + y);
                     uint64_t terrainDestinationIndex = terrainX + terrainY * (uint64_t)terrainWidth;
-                    uint64_t sourceIndex = tileIndexInOutput * (uint64_t)tileWidth * tileHeight + x + y * tileWidth;
+                    uint64_t sourceIndex = i * (uint64_t)tileWidth * tileHeight + x + y * tileWidth;
                     if (terrainX < terrainWidth && terrainY < terrainHeight) {
                         terrain.get()[terrainDestinationIndex] = loadedTilesOnHost_h[sourceIndex];
                     }
                 }
             }
-            tileIndexInOutput++;
         }
         // Rendering benchmark window.
         cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.get());
