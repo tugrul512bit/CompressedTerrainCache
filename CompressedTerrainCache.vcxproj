@@ -96,8 +96,8 @@
       <Optimization>O3</Optimization>
       <RuntimeChecks>Default</RuntimeChecks>
       <AdditionalOptions>-O3  -Xcompiler "/arch:AVX2" %(AdditionalOptions)</AdditionalOptions>
-      <GPUDebugInfo>false</GPUDebugInfo>
-      <GenerateLineInfo>false</GenerateLineInfo>
+      <GPUDebugInfo>true</GPUDebugInfo>
+      <GenerateLineInfo>true</GenerateLineInfo>
     </CudaCompile>
     <CudaLink>
       <Optimization>O3</Optimization>

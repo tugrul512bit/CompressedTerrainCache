@@ -9,16 +9,16 @@
 int main()
 {
     // Player can see this far (in units).
-    uint64_t playerVisibilityRadius = 1400;
+    uint64_t playerVisibilityRadius = 2000;
     // Low velocity is more cache-friendly, high velocity causes more decoding and PCIE utilization.
     float playerOrbitAngularVelocity = 0.005f;
-    // 2D terrain map size (in units).
-    uint64_t terrainWidth = 12001;
-    uint64_t terrainHeight = 12002;
+    // 2D terrain map size (in units), 2.5GB for terrain data, no allocation on device memory.
+    uint64_t terrainWidth = 15001;
+    uint64_t terrainHeight = 15003;
     // 2D tile size (in units). tileWidth * tileHeight = (multiple of HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) is preferred for performing better.
     uint64_t tileWidth = 64;
     uint64_t tileHeight = 64;
-    // Tile cache size, in tiles (so that 40x40 cache can store 1600 tiles at once)
+    // Tile cache size, in tiles (so that 250x250 cache can store 62500 tiles at once with 1.2GB device memory allocation for 64x64 tile size)
     uint64_t tileCacheSlotColumns = 70;
     uint64_t tileCacheSlotRows = 70;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
@@ -26,6 +26,9 @@ int main()
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint64_t numTiles = numTilesX * numTilesY;
+    // Uses 2x memory, 1 for slow method, 1 for fast method.
+    bool benchmarkSlowMethodForComparison = true;
+
 
     // Terrain element type (only POD structs/types are allowed). Uncomment below to select different sized terrain elements (example rendering will adapt colors automatically).
     //using T = unsigned char;
@@ -35,6 +38,7 @@ int main()
     // Generating sample terrain (2D cos wave pattern).
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
     uint32_t colorScale = (sizeof(T) == 8 ? 255 : 1);
+#pragma omp parallel for
     for (uint64_t y = 0; y < terrainHeight; y++) {
         for (uint64_t x = 0; x < terrainWidth; x++) {
             uint64_t index = x + y * terrainWidth;
@@ -73,7 +77,7 @@ int main()
     unsigned char* loadedTilesOnDevice_d = nullptr;
     constexpr int ACCESS_METHOD_DIRECT = 0;
     constexpr int ACCESS_METHOD_DECODE_HUFFMAN_CACHED = 1;
-    int accessMethod = 0;
+    int accessMethod = ACCESS_METHOD_DECODE_HUFFMAN_CACHED;
     // Sample game loop.
     while (true) {
         angle += playerOrbitAngularVelocity;
@@ -93,8 +97,9 @@ int main()
             }
         }
 
-        accessMethod = 1 - accessMethod;
-
+        if (benchmarkSlowMethodForComparison) {
+            accessMethod = 1 - accessMethod;
+        }
         switch (accessMethod) {
             case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
             case ACCESS_METHOD_DECODE_HUFFMAN_CACHED:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
