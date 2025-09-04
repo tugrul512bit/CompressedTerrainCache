@@ -10,6 +10,7 @@ int main()
 {
     // Player can see this far (in units).
     uint64_t playerVisibilityRadius = 1400;
+    // Low velocity is more cache-friendly, high velocity causes more decoding and PCIE utilization.
     float playerOrbitAngularVelocity = 0.005f;
     // 2D terrain map size (in units).
     uint64_t terrainWidth = 12001;
@@ -62,8 +63,6 @@ int main()
     cv::namedWindow("Loaded Tiles");
     cv::resizeWindow("Loaded Tiles", 1024, 1024);
 
-
-
     float angle = 0.0f;
     double timeNormalAccess = 0.0f;
     double timeDecode = 0.0f;
@@ -109,7 +108,7 @@ int main()
         // Clearing old terrain to see if visibility range works correctly.
         std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), sizeof(T) == 1 ? 255 : 0);
         uint32_t num = tileIndexList.size();
-        #pragma omp parallel for
+
         for (uint32_t i = 0; i < num; i++) {
             uint32_t tileIndex = tileIndexList[i];
             uint32_t tileX = tileIndex % numTilesX;

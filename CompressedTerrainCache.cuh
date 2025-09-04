@@ -72,8 +72,6 @@ namespace CompressedTerrainCache {
 				}
 			}
 		}
-
-
 		__device__ __forceinline__ bool d_acquireDirectMappedCacheSlot(uint32_t tile, uint32_t numTilesX, uint32_t numTilesY, uint32_t numSlotsX, uint32_t numSlotsY, uint32_t* slotLocks, uint32_t* tileCacheDataIndex, uint32_t localThreadIndex, uint32_t* broadcast, uint32_t& cacheSlotIndexOut) {
 			const uint32_t tileX = tile % numTilesX;
 			const uint32_t tileY = tile / numTilesX;
@@ -139,10 +137,8 @@ namespace CompressedTerrainCache {
 			const uint32_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
 			const uint32_t localThreadIndex = threadIdx.x;
 			const uint32_t numBlocks = gridDim.x;
-			const uint32_t numGlobalThreads = HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBlocks;
 			const uint32_t* treePtr = reinterpret_cast<const uint32_t*>(encodedTrees);
 			const uint32_t* tilePtr = reinterpret_cast<const uint32_t*>(encodedTiles);
-			const uint32_t blockAlignedBytes = blockAlignedElements * sizeof(uint32_t);
 			extern __shared__ uint32_t s_tree[];
 			__shared__ alignas(sizeof(T)) unsigned char s_coalescingLayer[HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement];
 			__shared__ uint32_t s_broadcast[1];
@@ -160,7 +156,6 @@ namespace CompressedTerrainCache {
 					uint32_t cacheSlotIndexOut = 0;
 					bool cacheHit = d_acquireDirectMappedCacheSlot(tile, numTilesX, numTilesY, numTileCacheSlotsX, numTileCacheSlotsY, tileCacheSlotLock, tileCacheDataIndex, localThreadIndex, &s_broadcast[0], cacheSlotIndexOut);
 					const uint64_t sourceOffset = cacheSlotIndexOut * (uint64_t)tileSizeBytes;
-
 					// Cache-hit (uses VRAM cache as source)
 					if (cacheHit) {
 						const uint64_t destinationOffset = tileIndex * (uint64_t)tileSizeBytes;
@@ -174,7 +169,6 @@ namespace CompressedTerrainCache {
 						d_releaseDirectMappedCacheSlot(cacheSlotIndexOut, tileCacheSlotLock, localThreadIndex);
 						continue;
 					}
-
 					// Cache-miss step 1: streams data from RAM, decodes the data and writes to device memory output
 					// Cache-miss step 2: copy the decoded data to the cache slot.
 					uint32_t decodeBitIndex = 0;
