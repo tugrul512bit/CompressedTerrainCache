@@ -5,7 +5,7 @@
 #include<algorithm>
 #include<queue>
 namespace HuffmanTileEncoder {
-    // This is used for shape of encoded data.
+    // This is used for shape of encoded data. Should stay low enough to keep cooperative kernel have all blocks resident always, to avoid deadlock during cache operations.
 	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 256;
 	
 	// For defining area of tile by two corners (top-left, bottom-right)
