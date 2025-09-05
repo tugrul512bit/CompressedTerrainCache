@@ -52,7 +52,7 @@ void clickEvent(int event, int mx, int my, int flags, void* userData)
 
     }
     else if (cv::EVENT_MBUTTONDOWN == event) {
-        
+
     }
 }
 int main()
@@ -101,10 +101,10 @@ int main()
     }
 
     // Creating tile manager that uses terrain as input.
-    int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
+    int deviceIndex = 1; // 0 means first cuda gpu, 1 means second cuda gpu, ...
     int numCpuThreads = std::thread::hardware_concurrency();
     std::cout << "Encoding tiles." << std::endl;
-    CompressedTerrainCache::TileManager<T> tileManager(terrain.data(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows,  numCpuThreads, deviceIndex);
+    CompressedTerrainCache::TileManager<T> tileManager(terrain.data(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows, numCpuThreads, deviceIndex);
     std::cout << "Creating output windows." << std::endl;
     // Rendering reference terrain in a window.
     cv::namedWindow("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.");
@@ -174,11 +174,11 @@ int main()
             accessMethod = 1 - accessMethod;
         }
         switch (accessMethod) {
-            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
-            case ACCESS_METHOD_DECODE_HUFFMAN_CACHED:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
-            default:break;
+        case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
+        case ACCESS_METHOD_DECODE_HUFFMAN_CACHED:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
+        default:break;
         }
-       
+
         uint64_t outputBytes = tileIndexList.size() * (size_t)tileWidth * tileHeight * sizeof(T);
         std::vector<T> loadedTilesOnHost_h(tileIndexList.size() * (size_t)tileWidth * tileHeight);
         // Downloading output tile data from device memory to RAM.
@@ -219,8 +219,8 @@ int main()
         std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
         std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
         cv::Mat benchmark;
-        auto color1 = cv::Scalar(120*colorScale, 255 * colorScale, 255 * colorScale, 255 * colorScale);
-        auto color2 = cv::Scalar(120*colorScale, 255 * colorScale, 0, 255 * colorScale);
+        auto color1 = cv::Scalar(0xED * colorScale, 0x1C * colorScale, 0x24 * colorScale, 255 * colorScale);
+        auto color2 = cv::Scalar(0x76 * colorScale, 0xB9 * colorScale, 0x00 * colorScale, 255 * colorScale);
         auto color3 = cv::Scalar(255 * colorScale, 255 * colorScale, 0, 255 * colorScale);
         cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
         cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
