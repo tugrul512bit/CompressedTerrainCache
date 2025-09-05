@@ -11,16 +11,16 @@ int main()
     // Player can see this far (in units).
     uint64_t playerVisibilityRadius = 2000;
     // Low velocity is more cache-friendly, high velocity causes more decoding and PCIE utilization.
-    float playerOrbitAngularVelocity = 0.005f;
+    float playerOrbitAngularVelocity = 0.009f;
     // 2D terrain map size (in units), 2.5GB for terrain data, no allocation on device memory.
     uint64_t terrainWidth = 15001;
     uint64_t terrainHeight = 15003;
     // 2D tile size (in units). tileWidth * tileHeight = (multiple of HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) is preferred for performing better.
     uint64_t tileWidth = 64;
     uint64_t tileHeight = 64;
-    // Tile cache size, in tiles (so that 250x250 cache can store 62500 tiles at once with 1.2GB device memory allocation for 64x64 tile size)
-    uint64_t tileCacheSlotColumns = 70;
-    uint64_t tileCacheSlotRows = 70;
+    // Tile cache size, in tiles (so that 64x64 cache can store 4096 tiles at once). Consumes device memory.
+    uint64_t tileCacheSlotColumns = 64;
+    uint64_t tileCacheSlotRows = 64;
     // internally this calculation is used as ordering of tiles.(index = tileX + tileY * numTilesX) (row-major)
     uint64_t numTerrainElements = terrainWidth * terrainHeight;
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
@@ -42,7 +42,6 @@ int main()
     for (uint64_t y = 0; y < terrainHeight; y++) {
         for (uint64_t x = 0; x < terrainWidth; x++) {
             uint64_t index = x + y * terrainWidth;
-
             uint32_t blue = (77 + cos(x * 0.002f) * cos(y * 0.002f) * 50) * colorScale;
             uint32_t green = (37 + cos(x * 0.0005f) * cos(y * 0.0005f) * 20) * colorScale;
             uint32_t red = (130 + cos(x * 0.0004f) * cos(y * 0.0004f) * 100) * colorScale;
@@ -78,6 +77,10 @@ int main()
     constexpr int ACCESS_METHOD_DIRECT = 0;
     constexpr int ACCESS_METHOD_DECODE_HUFFMAN_CACHED = 1;
     int accessMethod = ACCESS_METHOD_DECODE_HUFFMAN_CACHED;
+
+    // Preparing benchmark window.
+    cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.get());
+    cv::Mat downScaledImg2;
     // Sample game loop.
     while (true) {
         angle += playerOrbitAngularVelocity;
@@ -131,8 +134,6 @@ int main()
             }
         }
         // Rendering benchmark window.
-        cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.get());
-        cv::Mat downScaledImg2;
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
         std::string directMethod = std::string("Unified memory tile stream:");
         std::string decodeInfo1 = std::string("Kernel = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
