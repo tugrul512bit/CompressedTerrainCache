@@ -38,7 +38,7 @@ int main()
     // Generating sample terrain (2D cos wave pattern).
     std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
     uint32_t colorScale = (sizeof(T) == 8 ? 255 : 1);
-#pragma omp parallel for
+
     for (uint64_t y = 0; y < terrainHeight; y++) {
         for (uint64_t x = 0; x < terrainWidth; x++) {
             uint64_t index = x + y * terrainWidth;
