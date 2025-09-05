@@ -219,8 +219,8 @@ int main()
         std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
         std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
         cv::Mat benchmark;
-        auto color1 = cv::Scalar(0, 255 * colorScale, 255 * colorScale, 255 * colorScale);
-        auto color2 = cv::Scalar(0, 255 * colorScale, 0, 255 * colorScale);
+        auto color1 = cv::Scalar(120*colorScale, 255 * colorScale, 255 * colorScale, 255 * colorScale);
+        auto color2 = cv::Scalar(120*colorScale, 255 * colorScale, 0, 255 * colorScale);
         auto color3 = cv::Scalar(255 * colorScale, 255 * colorScale, 0, 255 * colorScale);
         cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
         cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
