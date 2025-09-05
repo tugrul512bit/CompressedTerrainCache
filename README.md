@@ -49,3 +49,5 @@ When the dataset fully fits inside the cache:
 Dependencies:
 - main.cu uses OpenCV-4 for visual output during benchmarks and maintained by VCPKG.
 - CUDA C++ compiler with C++17.
+
+Benchmarking in main.cu uses extra memory, real use would be 1/3 of current total allocation.
