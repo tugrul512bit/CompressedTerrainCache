@@ -3,9 +3,58 @@
 #include <cmath>
 // Cached encoder tool for 2d terrain.
 #include "CompressedTerrainCache.cuh"
-// OpenCV4 for 2d render.
+// For OpenCV4 for 2d render and keeping track of which tiles are updated.
 #include<opencv2/opencv.hpp>
+#include <map>
+// For handling terrain updates by mouse click
+struct UserTerrainUpdate {
+    int bytesPerTerrainElement;
+    int terrainWidth;
+    int terrainHeight;
+    int tileWidth;
+    int tileHeight;
+    int numTilesX;
+    unsigned char* terrain;
+    cv::Mat img;
+    cv::Mat downScaledImg;
+    std::vector<int> updateTileList;
+};
+void clickEvent(int event, int mx, int my, int flags, void* userData)
+{
+    UserTerrainUpdate* terrain = reinterpret_cast<UserTerrainUpdate*>(userData);
+    std::map<int, bool> indicesOfUpdatedTiles;
+    if (cv::EVENT_LBUTTONDOWN == event) {
+        int64_t mapX = (mx / 1024.0) * terrain->terrainWidth;
+        int64_t mapY = (my / 1024.0) * terrain->terrainHeight;
+        for (int64_t y = -100; y <= 100; y++) {
+            for (int64_t x = -100; x <= 100; x++) {
+                int64_t xt = x + mapX;
+                int64_t yt = y + mapY;
+                int64_t r = sqrt(x * x + y * y);
+                if (r < 100) {
+                    if (xt >= 0 && xt < terrain->terrainWidth && yt >= 0 && yt < terrain->terrainHeight) {
+                        indicesOfUpdatedTiles[xt / terrain->tileWidth + (yt / terrain->tileHeight) * terrain->numTilesX] = true;
+                        for (int64_t i = 0; i < terrain->bytesPerTerrainElement; i++) {
+                            terrain->terrain[i + (xt + yt * terrain->terrainWidth) * terrain->bytesPerTerrainElement] = 255;
+                        }
+                    }
+                }
+            }
+        }
+        terrain->updateTileList.clear();
+        for (auto e : indicesOfUpdatedTiles) {
+            terrain->updateTileList.push_back(e.first);
+        }
+        cv::resize(terrain->img, terrain->downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
+        cv::imshow("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.", terrain->downScaledImg);
+    }
+    else if (cv::EVENT_RBUTTONDOWN == event) {
 
+    }
+    else if (cv::EVENT_MBUTTONDOWN == event) {
+        
+    }
+}
 int main()
 {
     // Player can see this far (in units).
@@ -13,8 +62,8 @@ int main()
     // Low velocity is more cache-friendly, high velocity causes more decoding and PCIE utilization.
     float playerOrbitAngularVelocity = 0.009f;
     // 2D terrain map size (in units), 2.5GB for terrain data, no allocation on device memory.
-    uint64_t terrainWidth = 15001;
-    uint64_t terrainHeight = 15003;
+    uint64_t terrainWidth = 11001;
+    uint64_t terrainHeight = 11003;
     // 2D tile size (in units).
     uint64_t tileWidth = 64;
     uint64_t tileHeight = 64;
@@ -36,7 +85,8 @@ int main()
     //using T = uint64_t;
 
     // Generating sample terrain (2D cos wave pattern).
-    std::shared_ptr<T> terrain = std::shared_ptr<T>(new T[numTerrainElements], [](T* ptr) { delete[] ptr; });
+    std::vector<T> terrain = std::vector<T>(numTerrainElements);
+    std::vector<T> terrainBenchmark = std::vector<T>(numTerrainElements);
     uint32_t colorScale = (sizeof(T) == 8 ? 255 : 1);
 
     for (uint64_t y = 0; y < terrainHeight; y++) {
@@ -46,22 +96,34 @@ int main()
             uint32_t green = (37 + cos(x * 0.0005f) * cos(y * 0.0005f) * 20) * colorScale;
             uint32_t red = (130 + cos(x * 0.0004f) * cos(y * 0.0004f) * 100) * colorScale;
             uint32_t alpha = 255 * colorScale;
-            terrain.get()[index] = ((sizeof(T) == 8) ? (blue | (green << 16) | (red << 32) | (0xFFFF << 48)) : ((sizeof(T) == 4) ? (blue | (green << 8) | (red << 16) | (0xFF << 24)) : blue));
+            terrain[index] = ((sizeof(T) == 8) ? (blue | (green << 16) | (red << 32) | (0xFFFF << 48)) : ((sizeof(T) == 4) ? (blue | (green << 8) | (red << 16) | (0xFF << 24)) : blue));
         }
     }
 
     // Creating tile manager that uses terrain as input.
     int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
     int numCpuThreads = std::thread::hardware_concurrency();
-    CompressedTerrainCache::TileManager<T> tileManager(terrain.get(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows,  numCpuThreads, deviceIndex);
-    
+    std::cout << "Encoding tiles." << std::endl;
+    CompressedTerrainCache::TileManager<T> tileManager(terrain.data(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows,  numCpuThreads, deviceIndex);
+    std::cout << "Creating output windows." << std::endl;
     // Rendering reference terrain in a window.
-    cv::namedWindow("Downscaled Raw Terrain Data");
-    cv::resizeWindow("Downscaled Raw Terrain Data", 1024, 1024);
-    cv::Mat img(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.get());
+    cv::namedWindow("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.");
+    cv::resizeWindow("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.", 1024, 1024);
+    cv::Mat img(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.data());
     cv::Mat downScaledImg;
+    UserTerrainUpdate userUpdateEventObj;
+    userUpdateEventObj.bytesPerTerrainElement = sizeof(T);
+    userUpdateEventObj.terrainWidth = terrainWidth;
+    userUpdateEventObj.terrainHeight = terrainHeight;
+    userUpdateEventObj.tileWidth = tileWidth;
+    userUpdateEventObj.tileHeight = tileHeight;
+    userUpdateEventObj.numTilesX = numTilesX;
+    userUpdateEventObj.terrain = reinterpret_cast<unsigned char*>(terrain.data());
+    userUpdateEventObj.img = img;
+    userUpdateEventObj.downScaledImg = downScaledImg;
+    cv::setMouseCallback("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.", clickEvent, &userUpdateEventObj);
     cv::resize(img, downScaledImg, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
-    cv::imshow("Downscaled Raw Terrain Data", downScaledImg);
+    cv::imshow("Downscaled Raw Terrain Data. Click anywhere to edit the terrain.", downScaledImg);
     cv::waitKey(1);
     cv::namedWindow("Loaded Tiles");
     cv::resizeWindow("Loaded Tiles", 1024, 1024);
@@ -79,11 +141,19 @@ int main()
     int accessMethod = ACCESS_METHOD_DECODE_HUFFMAN_CACHED;
 
     // Preparing benchmark window.
-    cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrain.get());
+    cv::Mat img2(terrainHeight, terrainWidth, sizeof(T) == 4 ? CV_8UC4 : (sizeof(T) == 8 ? CV_16UC4 : CV_8UC1), terrainBenchmark.data());
     cv::Mat downScaledImg2;
     // Sample game loop.
     while (true) {
         angle += playerOrbitAngularVelocity;
+        // Check if user updated the original terrain, and re-encode if necessary.
+        if (userUpdateEventObj.updateTileList.size() > 0) {
+            std::cout << std::endl;
+            tileManager.encodeTerrain();
+            tileManager.invalidateCache();
+            userUpdateEventObj.updateTileList.clear();
+        }
+
         // Creating a sample list of tile-indices using visibility range of player.
         std::vector<uint32_t> tileIndexList;
         for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {
@@ -114,9 +184,9 @@ int main()
         // Downloading output tile data from device memory to RAM.
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
         // Clearing old terrain to see if visibility range works correctly.
-        std::fill(terrain.get(), terrain.get() + (terrainWidth * terrainHeight), sizeof(T) == 1 ? 255 : 0);
         uint32_t num = tileIndexList.size();
-
+        uint64_t numErrors = 0;
+        std::fill(terrainBenchmark.begin(), terrainBenchmark.end(), 0);
         for (uint32_t i = 0; i < num; i++) {
             uint32_t tileIndex = tileIndexList[i];
             uint32_t tileX = tileIndex % numTilesX;
@@ -128,11 +198,16 @@ int main()
                     uint64_t terrainDestinationIndex = terrainX + terrainY * (uint64_t)terrainWidth;
                     uint64_t sourceIndex = i * (uint64_t)tileWidth * tileHeight + x + y * tileWidth;
                     if (terrainX < terrainWidth && terrainY < terrainHeight) {
-                        terrain.get()[terrainDestinationIndex] = loadedTilesOnHost_h[sourceIndex];
+                        terrainBenchmark[terrainDestinationIndex] = loadedTilesOnHost_h[sourceIndex];
+                        numErrors += (terrain[terrainDestinationIndex] != terrainBenchmark[terrainDestinationIndex]);
                     }
                 }
             }
         }
+        if (numErrors > 0) {
+            std::cout << numErrors << " errors detected" << std::endl;
+        }
+
         // Rendering benchmark window.
         cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
         std::string directMethod = std::string("Unified memory tile stream:");
