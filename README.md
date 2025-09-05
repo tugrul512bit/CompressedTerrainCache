@@ -1,7 +1,9 @@
 # CompressedTerrainCache
 
 # What is this tool?
-It's an efficient terrain-streaming tool that runs only 1 CUDA kernel (no copy) to return the required parts of terrain when the terrain doesn't fit graphics card memory (VRAM). For example, when a player moves through 10 GB terrain, the graphics card uses only 1-2 GB of VRAM allocated. It balances allocation size with performance. Some cards don't have enough VRAM, and some cards have too slow PCIE bandwidth. Both of these disadvantages are balanced with CompressedTerrainCache.
+I takes a terrain of POD elements, compresses the terrain, and allows cached access from CUDA device without consuming much video memory. It's a compressed terrain cache.
+
+It efficiently streams terrain data and runs only 1 CUDA kernel (no copy) to return the required parts of terrain while the backing-store (terrain storage) doesn't consume the graphics card memory (VRAM). For example, when a player moves through 10 GB terrain, the graphics card uses only 1-2 GB of VRAM allocated. It balances allocation size with performance. Some cards don't have enough VRAM, and some cards have too slow PCIE bandwidth. Both of these disadvantages are balanced with CompressedTerrainCache.
 
 ```C++
 uint32_t terrain[1000 * 1000];
