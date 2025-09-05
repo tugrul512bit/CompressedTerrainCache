@@ -497,7 +497,7 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaStreamCreate(&stream));
 			CUDA_CHECK(cudaEventCreate(&start));
 			CUDA_CHECK(cudaEventCreate(&stop));
-			CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(&cudaGridSize, &cudaBlockSize, (void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, sizeof(T) * cudaBlockSize + sizeof(T)));
+			CUDA_CHECK(cudaOccupancyMaxPotentialBlockSizeVariableSMem(&cudaGridSize, &cudaBlockSize, (void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, [](int blckSz) { return sizeof(T) * blckSz + sizeof(T); }));
 			
 			// Allocating cache in device memory.
 			numTileCacheSlotsX = tileCacheSlotColumns;
