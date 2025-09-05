@@ -58,7 +58,7 @@ void clickEvent(int event, int mx, int my, int flags, void* userData)
 int main()
 {
     // Player can see this far (in units).
-    uint64_t playerVisibilityRadius = 2000;
+    uint64_t playerVisibilityRadius = 2025;
     // Low velocity is more cache-friendly, high velocity causes more decoding and PCIE utilization.
     float playerOrbitAngularVelocity = 0.009f;
     // 2D terrain map size (in units), 2.5GB for terrain data, no allocation on device memory.
@@ -101,7 +101,7 @@ int main()
     }
 
     // Creating tile manager that uses terrain as input.
-    int deviceIndex = 1; // 0 means first cuda gpu, 1 means second cuda gpu, ...
+    int deviceIndex = 0; // 0 means first cuda gpu, 1 means second cuda gpu, ...
     int numCpuThreads = std::thread::hardware_concurrency();
     std::cout << "Encoding tiles." << std::endl;
     CompressedTerrainCache::TileManager<T> tileManager(terrain.data(), terrainWidth, terrainHeight, tileWidth, tileHeight, tileCacheSlotColumns, tileCacheSlotRows, numCpuThreads, deviceIndex);
