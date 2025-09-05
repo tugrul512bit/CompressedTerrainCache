@@ -30,6 +30,25 @@ User adds a query with a list of tile indices to be fetched. Then it runs a kern
 - Huffman encoding is used for all bytes of each tile (its always byte-granularity regardless of POD type of terrain)
 - 2D Direct-mapped cache is implemented to optimize for increased cache-hit ratio for spatial-locality of player movements on the 2D terrain.
 
+# Is it computationally intensive?
+- When fully streaming (non-caching), Huffman Decoding is the bottleneck and its mostly due to decoding bits one by one (which translates to only 50-150 GB/s decode throughput depending on data).
+- When partially streaming (50%-90% caching), GPU memory bandwidth is bottleneck.
+- With benchmark scenario using OpenCV and other calculations, the gpu rarely computes and this causes driver to reduce frequency of GPU and VRAM.
+
+# How does the cache work?
+- Leader thread of each CUDA block acquires(locks) a slot of the cache (index depends on x, y coordinates of tile)
+- If data is found on cache slot, it is copied to output (uses video memory for max throughput)
+- If data is not found, compressed data is streamed from PCIE without consuming video memory but at lower throughput
+- Then data is decoded and copied to the cache for future and to the output
+- Finally, slot is released for other blocks
+- Other blocks can't enter same slot during computations (decoding, filling cache) but the cache is 2D direct-mapped cache so neighboring blocks on the terrain acquire different slots of cache.
+- Eviction is simple: if slot has same tile-index, it is a cache-hit, if different tile-index is found then its a cache-miss
+- Since encoding - decoding is used, cache-miss is still faster than streaming raw terrain data.
+- Depending on player movement in a game (or sub-matrix selection in a math library), cache serves as a persistent fast but small storage on video memory.
+- The faster the player moves, the more streaming is required. When player is stationary, cache supplies 100% of the tiles fetched.
+- Todo: a different kernel should check all cache-misses and cache-hits and sort the requests on miss/hit value (misses first)
+- - This would overlap more of the decoding with the cache-output copies as a latency hiding upgrade
+
 When actively streaming edge tiles of visible range from unified memory and using 2D caching for interior tiles:
 
 (1 byte per terrain element, PCIE v5.0 x16 lanes, RTX5070)
