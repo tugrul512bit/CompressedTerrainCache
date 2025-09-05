@@ -14,8 +14,6 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
-// For direct-mapped caching to be able to work concurrently with all cuda blocks active.
-#include <cooperative_groups.h>
 #define CUDA_CHECK(call)                                                   \
     do {                                                                   \
         cudaError_t err = call;                                            \
@@ -47,12 +45,12 @@ namespace CompressedTerrainCache {
 				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
 				if (tileIndex < numTilesToTest) {
 					const uint32_t tile = tileIndexList_u[tileIndex];
-					const uint32_t numAccessSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+					const uint32_t numAccessSteps = (tileSizeBytes + blockDim.x - 1) / blockDim.x;
 					// Decode steps.
 					uint32_t chunkCache = 0;
 					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numAccessSteps; decodeStep++) {
-						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
+						const uint32_t byteIndex = decodeStep * blockDim.x + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
 							const uint32_t tileLocalX = (byteIndex / numBytesPerElement) % tileWidth;
 							const uint32_t tileLocalY = (byteIndex / numBytesPerElement) / tileWidth;
@@ -68,7 +66,7 @@ namespace CompressedTerrainCache {
 				}
 			}
 		}
-		__device__ __forceinline__ bool d_acquireDirectMappedCacheSlot(uint32_t tile, uint32_t numTilesX, uint32_t numTilesY, uint32_t numSlotsX, uint32_t numSlotsY, uint32_t* slotLocks_d, uint32_t* tileCacheDataIndex_d, uint32_t localThreadIndex, uint32_t* broadcast, uint32_t& cacheSlotIndexOut) {
+		__device__ __forceinline__ bool d_acquireDirectMappedCacheSlot(uint32_t tile, uint32_t numTilesX, uint32_t numTilesY, uint32_t numSlotsX, uint32_t numSlotsY, uint32_t* slotLocks_d, uint32_t* tileCacheDataIndex_d, uint32_t localThreadIndex, uint32_t* s_broadcast, uint32_t& cacheSlotIndexOut) {
 			const uint32_t tileX = tile % numTilesX;
 			const uint32_t tileY = tile / numTilesX;
 			uint32_t slotIndexX = tileX % numSlotsX;
@@ -89,14 +87,14 @@ namespace CompressedTerrainCache {
 				if (tileCacheDataIndex_d[slotIndex] != tile) {
 					// Mark new tile for this slot.
 					tileCacheDataIndex_d[slotIndex] = tile;
-					broadcast[0] = 1;
+					s_broadcast[0] = 1;
 				}
 				else {
-					broadcast[0] = 0;
+					s_broadcast[0] = 0;
 				}
 			}
 			__syncthreads();
-			cacheHit = (0 == broadcast[0]);
+			cacheHit = (0 == s_broadcast[0]);
 			cacheSlotIndexOut = slotIndex;
 			return cacheHit;
 		}
@@ -135,11 +133,12 @@ namespace CompressedTerrainCache {
 			const uint32_t* treePtr_u = reinterpret_cast<const uint32_t*>(encodedTrees_u);
 			const uint32_t* tilePtr_u = reinterpret_cast<const uint32_t*>(encodedTiles_u);
 			__shared__ uint32_t s_tree[511];
-			__shared__ alignas(sizeof(T)) unsigned char s_coalescingLayer[HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement];
+			// Todo: alignas(sizeof(T)) !!!
+			extern __shared__ unsigned char s_coalescingLayer[];
 			__shared__ uint32_t s_broadcast[1];
 			// Tile steps.
 			const uint32_t numTileSteps = (numTilesToTest + numBlocks - 1) / numBlocks;
-			const uint32_t numDecodeSteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+			const uint32_t numDecodeSteps = (tileSizeBytes + blockDim.x - 1) / blockDim.x;
 			for (uint32_t tileStep = 0; tileStep < numTileSteps; tileStep++) {
 				const uint32_t tileIndex = tileStep * numBlocks + blockIdx.x;
 				if (tileIndex < numTilesToTest) {
@@ -154,9 +153,9 @@ namespace CompressedTerrainCache {
 					// Cache-hit (uses VRAM cache as source)
 					if (cacheHit) {
 						const uint64_t destinationOffset = tileIndex * (uint64_t)tileSizeBytes;
-						const uint32_t numCopySteps = (tileSizeBytes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement - 1) / (HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement);
+						const uint32_t numCopySteps = (tileSizeBytes + blockDim.x * numBytesPerElement - 1) / (blockDim.x * numBytesPerElement);
 						for (uint32_t copyStep = 0; copyStep < numCopySteps; copyStep++) {
-							const uint32_t tIndex = copyStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK * numBytesPerElement + localThreadIndex * numBytesPerElement;
+							const uint32_t tIndex = copyStep * blockDim.x * numBytesPerElement + localThreadIndex * numBytesPerElement;
 							if (tIndex < tileSizeBytes) {
 								*reinterpret_cast<T*>(&outputTiles_d[destinationOffset + tIndex]) = *reinterpret_cast<T*>(&cache_d[cacheSlotOffset + tIndex]);
 							}
@@ -172,9 +171,9 @@ namespace CompressedTerrainCache {
 					const uint32_t* treeBlockPtr_u = &treePtr_u[512 * tile];
 					// Loading tree into smem.
 					const uint32_t numNodes = treeBlockPtr_u[0];
-					const uint32_t numTreeLoadingSteps = (numNodes + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK - 1) / HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+					const uint32_t numTreeLoadingSteps = (numNodes + blockDim.x - 1) / blockDim.x;
 					for (int l = 0; l < numTreeLoadingSteps; l++) {
-						uint32_t node = l * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
+						uint32_t node = l * blockDim.x + localThreadIndex;
 						if (node < numNodes) {
 							s_tree[node] = treeBlockPtr_u[1 + node];
 						}
@@ -184,7 +183,7 @@ namespace CompressedTerrainCache {
 					uint32_t chunkCache = 0;
 					uint32_t chunkCacheIndex = -1;
 					for (uint32_t decodeStep = 0; decodeStep < numDecodeSteps; decodeStep++) {
-						const uint32_t byteIndex = decodeStep * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK + localThreadIndex;
+						const uint32_t byteIndex = decodeStep * blockDim.x + localThreadIndex;
 						if (byteIndex < tileSizeBytes) {
 							unsigned char leafNodeFound = 0;
 							uint32_t currentNodeIndex = 0;
@@ -194,12 +193,12 @@ namespace CompressedTerrainCache {
 								const uint32_t chunkRow = decodeBitIndex >> 5;
 								const uint32_t chunkBit = decodeBitIndex & 31;
 								// Aggregated access to the unified mem.
-								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+								const uint32_t chunkLoadIndex = chunkColumn + chunkRow * blockDim.x;
 								if (chunkCacheIndex != chunkLoadIndex) {
 									chunkCache = chunkBlockPtr_u[chunkLoadIndex];
 									chunkCacheIndex = chunkLoadIndex;
-									if (chunkLoadIndex + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK < blockAlignedElements) {
-										asm("prefetch.global.L1 [%0];"::"l"(&chunkBlockPtr_u[chunkLoadIndex + HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK]));
+									if (chunkLoadIndex + blockDim.x < blockAlignedElements) {
+										asm("prefetch.global.L1 [%0];"::"l"(&chunkBlockPtr_u[chunkLoadIndex + blockDim.x]));
 									}
 								}
 								const uint32_t bitBeingDecoded = (chunkCache >> chunkBit) & one;
@@ -305,8 +304,9 @@ namespace CompressedTerrainCache {
 			std::queue<TileCommand<T>> localCommandQueue;
 			TileWorker(int deviceIndex, int index, T* terrainPtrPrm, uint64_t terrainWidth, uint64_t terrainHeight, 
 				UnifiedMemory encodedTiles, 
-				UnifiedMemory encodedTrees) 
-				: commandQueue(), working(true), worker([&, index, terrainPtrPrm, encodedTiles, encodedTrees, terrainWidth, terrainHeight, deviceIndex]() {
+				UnifiedMemory encodedTrees,
+				uint32_t cudaBlockSize) 
+				: commandQueue(), working(true), worker([&,cudaBlockSize, index, terrainPtrPrm, encodedTiles, encodedTrees, terrainWidth, terrainHeight, deviceIndex]() {
 				bool workingTmp = true;
 				{
 					std::unique_lock<std::mutex> lock(mutex);
@@ -338,7 +338,7 @@ namespace CompressedTerrainCache {
 								currentTile.area = task.tileSource;
 								currentTile.copyInput(terrainWidth, terrainHeight, terrainPtrPrm);
 								bool measureBitLength = true;
-								int bitLength = currentTile.encode(measureBitLength);
+								int bitLength = currentTile.encode(measureBitLength, cudaBlockSize);
 								if (tmpBitLengthMax < bitLength) {
 									tmpBitLengthMax = bitLength;
 								}
@@ -349,7 +349,7 @@ namespace CompressedTerrainCache {
 								currentTile.area = task.tileSource;
 								currentTile.blockAlignedTileBytes = task.blockAlignedTileBytes;
 								currentTile.copyInput(terrainWidth, terrainHeight, terrainPtrPrm);
-								currentTile.encode();
+								currentTile.encode(false, cudaBlockSize);
 								currentTile.copyOutput(encodedTiles.ptr.get(), encodedTrees.ptr.get());
 							}
 						}
@@ -465,8 +465,9 @@ namespace CompressedTerrainCache {
 		uint64_t height;
 		unsigned char* terrain;
 		int blockAlignedTileBytes;
-		uint32_t numBlocksToLaunch;
 		bool benchmarkComparisonEnabled;
+		int cudaGridSize;
+		int cudaBlockSize;
 		/* 
 		T: type of units in the terrain (currently only unsigned char supported).
 		terrainPtr: raw data pointer to terrain data on host.
@@ -494,13 +495,8 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaStreamCreate(&stream));
 			CUDA_CHECK(cudaEventCreate(&start));
 			CUDA_CHECK(cudaEventCreate(&stop));
-
-			cudaDeviceProp deviceProperties;
-			CUDA_CHECK(cudaGetDeviceProperties(&deviceProperties, deviceIndex));
-			int numBlocksPerSM;
-			CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSM, (void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 0));
-			numBlocksToLaunch = deviceProperties.multiProcessorCount * numBlocksPerSM;
-
+			CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(&cudaGridSize, &cudaBlockSize, (void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, sizeof(T) * cudaBlockSize + sizeof(T)));
+			
 			// Allocating cache in device memory.
 			numTileCacheSlotsX = tileCacheSlotColumns;
 			numTileCacheSlotsY = tileCacheSlotRows;
@@ -512,11 +508,6 @@ namespace CompressedTerrainCache {
 			CUDA_CHECK(cudaMemsetAsync(memoryForTileCacheDataIndex.ptr.get(), 255, memoryForTileCacheDataIndex.numBytes, stream));
 			// Cache data.
 			memoryForCache = Helper::DeviceMemory(stream, sizeof(T) * tileWidth * tileHeight * numTileCacheSlotsX * numTileCacheSlotsY);
-			if (!deviceProperties.cooperativeLaunch) {
-				std::cout << "ERROR: cooperative kernel launch is not supported. " << std::endl;
-				exit(0);
-			}
-
 
 			uint64_t numTilesX = (width + tileWidth - 1) / tileWidth;
 			uint64_t numTilesY = (height + tileHeight - 1) / tileHeight;
@@ -532,7 +523,7 @@ namespace CompressedTerrainCache {
 			}
 			std::cout << "Creating cpu workers..." << std::endl;
 			for (int i = 0; i < numThreads; i++) {
-				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees);
+				std::shared_ptr<Helper::TileWorker<T>> worker = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees, cudaBlockSize);
 				workers.push_back(worker);
 			}
 			std::cout << "Measuring encoding bitlengths of tiles..." << std::endl;
@@ -567,11 +558,11 @@ namespace CompressedTerrainCache {
 		
 			// Calculating striped-decodable tile size.
 			uint32_t num32BitChunksRequiredPerThread = (maxBitLength + sizeof(uint32_t) * 8 + 1) / (sizeof(uint32_t) * 8);
-			blockAlignedTileBytes = sizeof(uint32_t) * num32BitChunksRequiredPerThread * HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK;
+			blockAlignedTileBytes = sizeof(uint32_t) * num32BitChunksRequiredPerThread * cudaBlockSize;
 			// Assuming encoded bits are not greater than raw data.
 			memoryForEncodedTiles = Helper::UnifiedMemory(numTiles * (uint64_t) blockAlignedTileBytes);
 			for (int i = 0; i < numThreads; i++) {
-				workers[i] = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees);
+				workers[i] = std::make_shared<Helper::TileWorker<T>>(deviceIndex, i, terrainPtr, width, height, memoryForEncodedTiles, memoryForEncodedTrees, cudaBlockSize);
 			}
 			std::cout << "Encoding tiles...   block-aligned-tile-bytes="<< blockAlignedTileBytes << std::endl;
 			idx = 0;
@@ -659,7 +650,7 @@ namespace CompressedTerrainCache {
 			unsigned char* output_d = memoryForLoadedTerrain.ptr.get();
 			void* args[] = { &tileSizeBytes, &terrain, &numTiles, &w, &h, &tw, &th, &tileList_u, &output_d };
 			CUDA_CHECK(cudaEventRecord(start, stream));
-			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessSelectedTiles<T>, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_accessSelectedTiles<T>, dim3(cudaGridSize, 1, 1), dim3(cudaBlockSize, 1, 1), args, 0, stream));
 			CUDA_CHECK(cudaEventRecord(stop, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 			float milliseconds = 0.0f;
@@ -707,7 +698,7 @@ namespace CompressedTerrainCache {
 				&tileCacheSlotLock_d, &numTileCacheSlotsX, &numTileCacheSlotsY, &tileCacheDataIndex_d, &cache_d
 			};
 			CUDA_CHECK(cudaEventRecord(start, stream));
-			CUDA_CHECK(cudaLaunchCooperativeKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, dim3(numBlocksToLaunch, 1, 1), dim3(HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK, 1, 1), args, 0, stream));
+			CUDA_CHECK(cudaLaunchKernel((void*)Kernels::k_decodeSelectedTilesWithDirectMappedCache<T>, dim3(cudaGridSize, 1, 1), dim3(cudaBlockSize, 1, 1), args, sizeof(T) * cudaBlockSize + sizeof(T), stream));
 			CUDA_CHECK(cudaEventRecord(stop, stream));
 			CUDA_CHECK(cudaStreamSynchronize(stream));
 			float milliseconds = 0.0f;

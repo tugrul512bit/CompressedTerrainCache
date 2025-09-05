@@ -5,9 +5,6 @@
 #include<algorithm>
 #include<queue>
 namespace HuffmanTileEncoder {
-    // This is used for shape of encoded data. Should stay low enough to keep cooperative kernel have all blocks resident always, to avoid deadlock during cache operations.
-	constexpr int NUM_CUDA_THREADS_PER_BLOCK = 256;
-	
 	// For defining area of tile by two corners (top-left, bottom-right)
 	struct Rectangle {
 		uint64_t x1, y1, x2, y2;
@@ -46,7 +43,7 @@ namespace HuffmanTileEncoder {
 			}
 		}
 		// when pass = 1, it only measures maximum bit stream length.
-		int encode(bool measureBitLength = false) {
+		int encode(bool measureBitLength = false, uint32_t cudaBlockSize = 256) {
 			int histogram[256];
 			for (int i = 0; i < 256; i++) {
 				histogram[i] = 0;
@@ -180,15 +177,15 @@ namespace HuffmanTileEncoder {
 			// Encoding in striped pattern. Each row contains same index bits but in chunks of 32 for efficiency.
 			// Finding longest column (num32BitSteps) and computing striped pattern.
 			int numBytes = sizeof(T) * (area.x2 - area.x1) * (area.y2 - area.y1);
-			int currentCodeBitsForThread[NUM_CUDA_THREADS_PER_BLOCK];
-			for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
+			std::vector<int> currentCodeBitsForThread(cudaBlockSize);
+			for (int thread = 0; thread < cudaBlockSize; thread++) {
 				currentCodeBitsForThread[thread] = 0;
 			}
 			
 			int bitLength = 0;
 			uint32_t one = 1;
 			for (int i = 0; i < numBytes; i++) {
-				int thread = i % NUM_CUDA_THREADS_PER_BLOCK;
+				int thread = i % cudaBlockSize;
 				uint32_t code;
 				uint32_t codeLength;
 				code = codeMapping[sourceData[i]];
@@ -200,7 +197,7 @@ namespace HuffmanTileEncoder {
 						// Inside a column of integers.
 						uint32_t row = currentCodeBitsForThread[thread] / 32;
 						uint32_t col = thread;
-						uint32_t idx = col + row * NUM_CUDA_THREADS_PER_BLOCK;
+						uint32_t idx = col + row * cudaBlockSize;
 						uint32_t data = reinterpret_cast<uint32_t*>(encodedData.data())[idx];
 						uint32_t bitData = (code >> bit) & one;
 						data = data | (bitData << bitPos);
@@ -214,7 +211,7 @@ namespace HuffmanTileEncoder {
 				}
 			}
 			
-			for (int thread = 0; thread < NUM_CUDA_THREADS_PER_BLOCK; thread++) {
+			for (int thread = 0; thread < cudaBlockSize; thread++) {
 				if (bitLength < currentCodeBitsForThread[thread]) {
 					bitLength = currentCodeBitsForThread[thread];
 				}
