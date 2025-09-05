@@ -15,7 +15,7 @@ int main()
     // 2D terrain map size (in units), 2.5GB for terrain data, no allocation on device memory.
     uint64_t terrainWidth = 15001;
     uint64_t terrainHeight = 15003;
-    // 2D tile size (in units). tileWidth * tileHeight = (multiple of HuffmanTileEncoder::NUM_CUDA_THREADS_PER_BLOCK) is preferred for performing better.
+    // 2D tile size (in units).
     uint64_t tileWidth = 64;
     uint64_t tileHeight = 64;
     // Tile cache size, in tiles (so that 64x64 cache can store 4096 tiles at once). Consumes device memory.
@@ -26,7 +26,7 @@ int main()
     uint64_t numTilesX = (terrainWidth + tileWidth - 1) / tileWidth;
     uint64_t numTilesY = (terrainHeight + tileHeight - 1) / tileHeight;
     uint64_t numTiles = numTilesX * numTilesY;
-    // Uses 2x memory, 1 for slow method, 1 for fast method.
+    // Uses 2x memory, 1 for slow method, 1 for fast method. Slow method only demonstrates unoptimized access to terrain to compare to optimized version that uses decoding and caching.
     bool benchmarkSlowMethodForComparison = true;
 
 
