@@ -101,7 +101,7 @@ namespace CompressedTerrainCache {
 
 		__device__ __forceinline__ void d_releaseDirectMappedCacheSlot(uint32_t slotIndex, uint32_t* slotLocks_d, uint32_t localThreadIndex) {
 			__syncthreads();
-			// Block leader locks the slot and the block waits for the leader.
+			// Block leader waits for the block and unlocks the slot.
 			if (localThreadIndex == 0) {
 				__threadfence();
 				atomicExch(&slotLocks_d[slotIndex], 0);
