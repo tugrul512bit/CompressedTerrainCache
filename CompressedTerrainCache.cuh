@@ -627,6 +627,7 @@ namespace CompressedTerrainCache {
 		Takes row-major list of tile indices to stream from RAM to VRAM.
 		Returns tiles loaded in the same order as the indices.
 		Elapsed time (in seconds) is written to the last parameter.
+		Returned pointer points to device memory for directly using in other kernels or graphics apis.
 		*/
 		unsigned char* accessSelectedTiles(std::vector<uint32_t> tileIndexList, double* elapsedTime = nullptr, double* dataSize = nullptr, double* throughput = nullptr) {
 			if (!benchmarkComparisonEnabled) {
@@ -669,7 +670,10 @@ namespace CompressedTerrainCache {
 			}
 			return memoryForLoadedTerrain.ptr.get();
 		}
-		// Fetches Huffman Tree, encoded linearized tile data and decodes multiple columns in parallel.
+		/*
+			Fetches Huffman Tree, encoded linearized tile data and decodes multiple columns in parallel.
+			Returned pointer points to device memory for directly using in other kernels or graphics apis.
+		*/
 		unsigned char* decodeSelectedTiles(std::vector<uint32_t> tileIndexList, double* elapsedTime = nullptr, double* dataSize = nullptr, double* throughput = nullptr) {
 			uint32_t numTiles = tileIndexList.size();
 			uint32_t tileSizeBytes = tileWidth * tileHeight * sizeof(T);
@@ -716,6 +720,60 @@ namespace CompressedTerrainCache {
 				*elapsedTime = time;
 			}
 			return memoryForLoadedTerrain.ptr.get();
+		}
+		/*
+			Uses unified memory. 
+			Creates a list of indices of tiles that are colliding with the player's visible range (circle).
+			Prepares the data in linear format (each tile is fully linear without any stride).
+			Also returns the tile list with the required index and boundary values.
+		*/
+		unsigned char* accessTilesAroundPlayerPosition(uint64_t playerX, uint64_t playerY, uint64_t playerVisibilityRadius, std::vector<uint32_t>& tilesSelected, double* elapsedTime = nullptr, double* dataSize = nullptr, double* throughput = nullptr) {
+			tilesSelected.clear();
+			for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {
+				for (uint64_t tileX = 0; tileX < numTilesX; tileX++) {
+					uint64_t tileX1 = tileX * tileWidth;
+					uint64_t tileX2 = tileX1 + tileWidth;
+					uint64_t tileY1 = tileY * tileHeight;
+					uint64_t tileY2 = tileY1 + tileHeight;
+					uint64_t touchX = std::min(std::max(playerX, tileX1), tileX2);
+					uint64_t touchY = std::min(std::max(playerY, tileY1), tileY2);
+					// Checking if player visibility range collides with the current tile.
+					uint64_t distanceX = playerX - touchX;
+					uint64_t distanceY = playerY - touchY;
+					uint64_t distance = sqrt(distanceX * distanceX + distanceY * distanceY);
+					if (distance <= playerVisibilityRadius) {
+						tilesSelected.push_back(tileX + tileY * numTilesX);
+					}
+				}
+			}
+			return accessSelectedTiles(tilesSelected, elapsedTime, dataSize, throughput);
+		}
+		/* 
+			Uses decoding, caching and unified memory.
+			Creates a list of indices of tiles that are colliding with the player's visible range (circle).
+			Prepares the data in linear format (each tile is fully linear without any stride).
+			Also returns the tile list with the required index and boundary values.
+		*/
+		unsigned char* decodeTilesAroundPlayerPosition(uint64_t playerX, uint64_t playerY, uint64_t playerVisibilityRadius, std::vector<uint32_t>& tilesSelected, double* elapsedTime = nullptr, double* dataSize = nullptr, double* throughput = nullptr) {
+			tilesSelected.clear();
+			for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {
+				for (uint64_t tileX = 0; tileX < numTilesX; tileX++) {
+					uint64_t tileX1 = tileX * tileWidth;
+					uint64_t tileX2 = tileX1 + tileWidth;
+					uint64_t tileY1 = tileY * tileHeight;
+					uint64_t tileY2 = tileY1 + tileHeight;
+					uint64_t touchX = std::min(std::max(playerX, tileX1), tileX2);
+					uint64_t touchY = std::min(std::max(playerY, tileY1), tileY2);
+					// Checking if player visibility range collides with the current tile.
+					uint64_t distanceX = playerX - touchX;
+					uint64_t distanceY = playerY - touchY;
+					uint64_t distance = sqrt(distanceX * distanceX + distanceY * distanceY);
+					if (distance <= playerVisibilityRadius) {
+						tilesSelected.push_back(tileX + tileY * numTilesX);
+					}
+				}
+			}
+			return decodeSelectedTiles(tilesSelected, elapsedTime, dataSize, throughput);
 		}
 		~TileManager() {
 			workers.clear();

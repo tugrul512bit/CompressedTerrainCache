@@ -135,7 +135,7 @@ int main()
     double dataSizeDecode = 0.0f;
     double throughputNormalAccess = 0.0f;
     double throughputDecode = 0.0;
-    unsigned char* loadedTilesOnDevice_d = nullptr;
+
     constexpr int ACCESS_METHOD_DIRECT = 0;
     constexpr int ACCESS_METHOD_DECODE_HUFFMAN_CACHED = 1;
     int accessMethod = ACCESS_METHOD_DECODE_HUFFMAN_CACHED;
@@ -146,6 +146,8 @@ int main()
     // Sample game loop.
     while (true) {
         angle += playerOrbitAngularVelocity;
+        uint64_t playerX = terrainWidth / 2 + cos(angle) * terrainWidth / 4;
+        uint64_t playerY = terrainHeight / 2 + sin(angle) * terrainHeight / 4;
         // Check if user updated the original terrain, and re-encode if necessary.
         if (userUpdateEventObj.updateTileList.size() > 0) {
             std::cout << std::endl;
@@ -154,31 +156,21 @@ int main()
             userUpdateEventObj.updateTileList.clear();
         }
 
-        // Creating a sample list of tile-indices using visibility range of player.
-        std::vector<uint32_t> tileIndexList;
-        for (uint64_t tileY = 0; tileY < numTilesY; tileY++) {
-            for (uint64_t tileX = 0; tileX < numTilesX; tileX++) {
-                // Checking if player visibility range collides with the current tile.
-                uint64_t playerX = terrainWidth / 2 + cos(angle) * terrainWidth / 4;
-                uint64_t playerY = terrainHeight / 2 + sin(angle) * terrainHeight / 4;
-                uint64_t distanceX = playerX - (tileX * tileWidth + tileWidth / 2);
-                uint64_t distanceY = playerY - (tileY * tileHeight + tileHeight / 2);
-                uint64_t distance = sqrt(distanceX * distanceX + distanceY * distanceY);
-                if (distance < playerVisibilityRadius) {
-                    tileIndexList.push_back(tileX + tileY * numTilesX);
-                }
-            }
-        }
-
         if (benchmarkSlowMethodForComparison) {
             accessMethod = 1 - accessMethod;
         }
-        switch (accessMethod) {
-        case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessSelectedTiles(tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
-        case ACCESS_METHOD_DECODE_HUFFMAN_CACHED:loadedTilesOnDevice_d = tileManager.decodeSelectedTiles(tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
-        default:break;
-        }
 
+        // Gets data around the player, using visibility range, tile size, terrain size. Result is on device memory, ready for computations in GPU.
+        unsigned char* loadedTilesOnDevice_d = nullptr;
+        std::vector<uint32_t> tileIndexList;
+        switch (accessMethod) {
+            // Direct access through PCIE for each tile (still faster than doing thousands of memcpy from host to device for each tile)
+            case ACCESS_METHOD_DIRECT: loadedTilesOnDevice_d = tileManager.accessTilesAroundPlayerPosition(playerX, playerY, playerVisibilityRadius, tileIndexList, &timeNormalAccess, &dataSizeNormalAccess, &throughputNormalAccess); break;
+            // Checks if cache contains the tile data. If hits, copies the result. If misses, gets encoded data through PCIE and decodes it in GPU, then copies the result.
+            case ACCESS_METHOD_DECODE_HUFFMAN_CACHED: loadedTilesOnDevice_d = tileManager.decodeTilesAroundPlayerPosition(playerX, playerY, playerVisibilityRadius, tileIndexList, &timeDecode, &dataSizeDecode, &throughputDecode); break;
+            default:break;
+        }
+        // Output tile index list has row-major ordering. But decodeSelectedTiles method can use any order of tiles from user, even with duplicated indices (they are cached).
         uint64_t outputBytes = tileIndexList.size() * (size_t)tileWidth * tileHeight * sizeof(T);
         std::vector<T> loadedTilesOnHost_h(tileIndexList.size() * (size_t)tileWidth * tileHeight);
         // Downloading output tile data from device memory to RAM.
