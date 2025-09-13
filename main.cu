@@ -55,6 +55,32 @@ void clickEvent(int event, int mx, int my, int flags, void* userData)
 
     }
 }
+void renderBenchmarkWindow(cv::Mat img2, cv::Mat downScaledImg2,double timeNormalAccess, double dataSizeNormalAccess, double throughputNormalAccess, double timeDecode, double dataSizeDecode, double throughputDecode, uint32_t colorScale) {
+    // Rendering benchmark window.
+    cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
+    std::string directMethod = std::string("Unified memory tile stream:");
+    std::string decodeInfo1 = std::string("Kernel = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
+    std::string decodeInfo2 = std::string("Data = ") + std::to_string(dataSizeNormalAccess) + std::string(" GB");
+    std::string decodeInfo3 = std::string("Throughput = ") + std::to_string(throughputNormalAccess) + std::string(" GB/s");
+    std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding + 2D caching:");
+    std::string decodeInfo4 = std::string("Kernel = ") + std::to_string(timeDecode) + std::string(" seconds");
+    std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
+    std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
+    cv::Mat benchmark;
+    auto color1 = cv::Scalar(0xED * colorScale, 0x1C * colorScale, 0x24 * colorScale, 255 * colorScale);
+    auto color2 = cv::Scalar(0x76 * colorScale, 0xB9 * colorScale, 0x00 * colorScale, 255 * colorScale);
+    auto color3 = cv::Scalar(255 * colorScale, 255 * colorScale, 0, 255 * colorScale);
+    cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo3, cv::Point(20, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeMethod, cv::Point(20, 160), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo4, cv::Point(20, 180), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo5, cv::Point(20, 200), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, decodeInfo6, cv::Point(20, 220), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
+    cv::putText(downScaledImg2, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, color3, 2, cv::LINE_AA);
+    cv::imshow("Loaded Tiles", downScaledImg2);
+}
 int main()
 {
     // Player can see this far (in units).
@@ -148,9 +174,8 @@ int main()
         angle += playerOrbitAngularVelocity;
         uint64_t playerX = terrainWidth / 2 + cos(angle) * terrainWidth / 4;
         uint64_t playerY = terrainHeight / 2 + sin(angle) * terrainHeight / 4;
-        // Check if user updated the original terrain, and re-encode if necessary.
+        // Re-encode if terrain has changed.
         if (userUpdateEventObj.updateTileList.size() > 0) {
-            std::cout << std::endl;
             tileManager.encodeTerrain();
             tileManager.invalidateCache();
             userUpdateEventObj.updateTileList.clear();
@@ -175,9 +200,10 @@ int main()
         std::vector<T> loadedTilesOnHost_h(tileIndexList.size() * (size_t)tileWidth * tileHeight);
         // Downloading output tile data from device memory to RAM.
         CUDA_CHECK(cudaMemcpy(loadedTilesOnHost_h.data(), loadedTilesOnDevice_d, outputBytes, cudaMemcpyDeviceToHost));
-        // Clearing old terrain to see if visibility range works correctly.
+
         uint32_t num = tileIndexList.size();
         uint64_t numErrors = 0;
+        // Clearing old terrain to see if visibility range works correctly.
         std::fill(terrainBenchmark.begin(), terrainBenchmark.end(), 0);
         for (uint32_t i = 0; i < num; i++) {
             uint32_t tileIndex = tileIndexList[i];
@@ -201,29 +227,7 @@ int main()
         }
 
         // Rendering benchmark window.
-        cv::resize(img2, downScaledImg2, cv::Size(1024, 1024), 0, 0, cv::INTER_AREA);
-        std::string directMethod = std::string("Unified memory tile stream:");
-        std::string decodeInfo1 = std::string("Kernel = ") + std::to_string(timeNormalAccess) + std::string(" seconds");
-        std::string decodeInfo2 = std::string("Data = ") + std::to_string(dataSizeNormalAccess) + std::string(" GB");
-        std::string decodeInfo3 = std::string("Throughput = ") + std::to_string(throughputNormalAccess) + std::string(" GB/s");
-        std::string decodeMethod = std::string("Unified memory encoded-tile stream + decoding + 2D caching:");
-        std::string decodeInfo4 = std::string("Kernel = ") + std::to_string(timeDecode) + std::string(" seconds");
-        std::string decodeInfo5 = std::string("Data = ") + std::to_string(dataSizeDecode) + std::string(" GB");
-        std::string decodeInfo6 = std::string("Throughput = ") + std::to_string(throughputDecode) + std::string(" GB/s");
-        cv::Mat benchmark;
-        auto color1 = cv::Scalar(0xED * colorScale, 0x1C * colorScale, 0x24 * colorScale, 255 * colorScale);
-        auto color2 = cv::Scalar(0x76 * colorScale, 0xB9 * colorScale, 0x00 * colorScale, 255 * colorScale);
-        auto color3 = cv::Scalar(255 * colorScale, 255 * colorScale, 0, 255 * colorScale);
-        cv::putText(downScaledImg2, directMethod, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo1, cv::Point(20, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo2, cv::Point(20, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo3, cv::Point(20, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, color1, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeMethod, cv::Point(20, 160), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo4, cv::Point(20, 180), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo5, cv::Point(20, 200), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, decodeInfo6, cv::Point(20, 220), cv::FONT_HERSHEY_SIMPLEX, 0.75, color2, 2, cv::LINE_AA);
-        cv::putText(downScaledImg2, "Press ESC to exit", cv::Point(20, 980), cv::FONT_HERSHEY_SIMPLEX, 0.75, color3, 2, cv::LINE_AA);
-        cv::imshow("Loaded Tiles", downScaledImg2);
+        renderBenchmarkWindow(img2, downScaledImg2, timeNormalAccess, dataSizeNormalAccess, throughputNormalAccess, timeDecode, dataSizeDecode, throughputDecode, colorScale);
         int key = cv::waitKey(1);
         if (key == 27) {
             break;
