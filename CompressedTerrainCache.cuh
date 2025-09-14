@@ -474,7 +474,7 @@ namespace CompressedTerrainCache {
 		uint64_t numTiles;
 		int numThreads;
 		/* 
-		T: type of units in the terrain (currently only unsigned char supported).
+		T: type of units in the terrain (only unsigned char, uint32_t and uint64_t are tested, any POD should work).
 		terrainPtr: raw data pointer to terrain data on host.
 		widthPrm: width of terrain in units
 		heightPrm: height of terrain in units
